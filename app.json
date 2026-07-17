@@ -33,6 +33,8 @@
     "name": "John Bothe",
     "email": "jbothe@gmail.com"
   },
+  "support": "https://github.com/jbothe/dexcom-share-homey-app/issues",
+  "source": "https://github.com/jbothe/dexcom-share-homey-app",
   "flow": {
     "triggers": [
       {
@@ -334,6 +336,11 @@
           {
             "type": "dropdown",
             "name": "direction",
+            "title": {
+              "en": "Trend",
+              "de": "Trend",
+              "nl": "Trend"
+            },
             "values": [
               {
                 "id": "None",

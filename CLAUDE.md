@@ -26,10 +26,11 @@ Dexcom Share account, with no cap (`lib/pairing.ts` → `resolvePairList` only r
 - `npm test` — `tsc && node --test .homeybuild/test/*.test.js`.
 - `npm run lint` — `eslint --ext .js,.ts .`; must be 0 problems.
 - `homey app validate --level publish` — must pass.
-- `homey app validate --level verified` — **currently fails**, and CI runs *this* level, not
-  `publish` (see CI below): `✖ The property 'support' is required in order to publish a verified
-  app.` `.homeycompose/app.json` has no `support` (nor `source`) key. Adding one clears it. Until
-  then the local gate above is looser than the CI gate, so a green local run says nothing about CI.
+- `homey app validate --level verified` — must pass; **this is the level CI runs** (see CI below),
+  so it, not `publish`, is the real gate. It checks strictly more than `publish` does — it is what
+  caught both the missing `support`/`source` keys and a missing `title` on `trend_is`'s `direction`
+  arg (`publish` is happy without either). It reports **one error per run**, so expect to re-run it
+  several times after touching manifests rather than getting a full list up front.
 - `homey app run` — run on a real Homey (LAN). **Not exercised during this app's initial build** —
   no Homey Pro was reachable in that environment. Pairing, capability display, Flow-card firing, and
   widget rendering are only verified via unit tests + the dev-only browser preview harness (see
@@ -44,20 +45,27 @@ Dexcom Share account, with no cap (`lib/pairing.ts` → `resolvePairList` only r
   copied over — none of that ships in a bare `homey app create` skeleton.
 
 ## CI (`.github/workflows/`)
-Three stock Athom workflows, straight from the `homey app create` skeleton and **never reconciled
-with this app** — chargeiq has no workflows at all, so there was no sibling precedent to copy.
-Nothing has run yet: at time of writing the repo has **no commits and no remote** (see "Not yet
-verified"), so all three are untested against this app in practice.
-- `homey-app-validate.yml` — on every `push`/`pull_request`, at **`level: verified`**, which is
-  stricter than the `--level publish` gate the Commands section documents and **fails today** on
-  the missing `support` property. The first push therefore goes red until that key is added. Fix
-  the manifest rather than downgrading the workflow's level: `verified` is what the App Store
-  requires anyway, so it is the honest gate.
-- `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, and cuts a GitHub
-  release. Note it writes `.homeychangelog.json`, so the changelog is maintained *through this
-  workflow*, not by hand.
-- `homey-app-publish.yml` — manual dispatch; needs a `HOMEY_PAT` repo secret that does not exist
-  yet.
+Three Athom workflows from the `homey app create` skeleton (chargeiq has none, so there was no
+sibling precedent to copy). Repo: `github.com/jbothe/dexcom-share-homey-app`.
+
+**Every `athombv/*` step that compiles the app needs an explicit `actions/setup-node` + `npm ci`
+before it, which the stock skeleton does not include.** Those actions run `npx tsc --showConfig`,
+and `tsconfig.json` extends `@tsconfig/node16/tsconfig.json` — which lives in `node_modules`. With
+no install step the `extends` can't resolve (`TS6053`) and the action reports it as the much less
+obvious `Tsconfig validation failed: unable to read configuration from 'npx tsc --showConfig'`.
+This bit on the very first push (green locally, red in CI, purely because a local `node_modules`
+was masking it). It affects any TypeScript Homey app whose tsconfig extends a package, so don't
+"simplify" those install steps back out of `homey-app-validate.yml` / `homey-app-publish.yml`.
+- `homey-app-validate.yml` — every `push`/`pull_request`, at **`level: verified`** (see Commands:
+  stricter than `publish`, and the real gate). Deliberately not downgraded to `publish` to make it
+  pass — `verified` is what the App Store requires anyway, so it is the honest gate.
+  **It does not run `npm test` or `npm run lint`** — the 76 unit tests are not enforced anywhere in
+  CI, only locally. Worth adding.
+- `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, cuts a GitHub
+  release. It writes `.homeychangelog.json`, so the changelog is maintained *through this workflow*,
+  not by hand. Has no compile step of its own, so it needs no install step.
+- `homey-app-publish.yml` — manual dispatch; needs a `HOMEY_PAT` repo secret that **does not exist
+  yet**, so publishing is not actually wired up.
 
 ## Architecture
 Each paired device (`drivers/follower/`) owns its own `lib/dexcom/DexcomPoller.ts` instance and its
@@ -512,11 +520,6 @@ settings labels — those are internal identifiers or genuinely-accurate upstrea
 not the app's own product name, and renaming them wasn't part of this ask.
 
 ## Not yet verified
-**Not in version control at all.** The repo has zero commits, no branches, and no remote — the
-entire app exists only as an untracked working tree, so nothing here is recoverable and none of the
-CI above has ever run. This is the single largest outstanding risk and is unrelated to code
-quality.
-
 **The Homey Cloud target is unverified.** Both manifests declare `platforms: ["local", "cloud"]`
 intentionally (see the header), but every real-device session so far has been Homey Pro. Nothing
 about Cloud has been exercised — including whether the polling cadence and long-lived client hold

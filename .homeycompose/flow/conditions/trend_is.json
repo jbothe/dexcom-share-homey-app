@@ -14,6 +14,7 @@
     {
       "type": "dropdown",
       "name": "direction",
+      "title": { "en": "Trend", "de": "Trend", "nl": "Trend" },
       "values": [
         { "id": "None", "label": { "en": "Unavailable", "de": "Nicht verfügbar", "nl": "Niet beschikbaar" } },
         { "id": "DoubleUp", "label": { "en": "Rising quickly ↑︎↑︎", "de": "Steigt schnell ↑︎↑︎", "nl": "Stijgt snel ↑︎↑︎" } },
