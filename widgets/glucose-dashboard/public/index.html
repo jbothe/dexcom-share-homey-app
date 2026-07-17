@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <style>
+    /* Themed purely via Homey's own injected --homey-* variables / .homey-text-* utility
+       classes, no local color fallback and no manual dark-mode detection - same convention
+       as widgets/power-flow (see its own top-of-file comment for the full rationale: Homey's
+       app-level theme setting is authoritative and independent of the OS, and Homey injects
+       already-resolved values for it, so a prefers-color-scheme media query would silently
+       follow the OS instead). Renders unstyled outside the real Homey app by design. */
+    * { box-sizing: border-box; }
+    /* touch-action backstops the viewport meta tag's user-scalable=no - iOS Safari (and some
+       embedded webviews) ignore that meta directive for accessibility reasons but still honor
+       touch-action, so pinch-zoom stays blocked either way. */
+    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; touch-action: pan-x pan-y; }
+    body { color: var(--homey-text-color); -webkit-font-smoothing: antialiased; }
+    .card { padding: var(--homey-su-4); transition: opacity .5s ease, filter .5s ease; }
+    .card.stale { opacity: 0.4; filter: grayscale(0.85); }
+
+    /* Bespoke (non-Homey-semantic) tokens only - the sparkline's zones/line have no Homey
+       equivalent. The four --spark-zone-* tokens are the only ones that need a per-theme
+       adjustment (same accepted exception power-flow documents for its own decorative gradient
+       tokens): Homey's own palette values (--homey-color-*) are fixed across light/dark (see
+       homey-mock.css), so a flat color-mix reads as light shading on a light card but turns a
+       near-black one into solid blocks of color. --spark-line-normal is deliberately NOT in
+       that group - blue-600 in both themes, so it's set once in :root and never overridden.
+
+       Each theme is spelled out in full, three times over, and that repetition is load-bearing:
+       every block must list all four zone tokens. Homey's real dashboard only ever takes the
+       @media (prefers-color-scheme: dark) path - the [data-theme] blocks exist purely for the
+       dev preview harness's own Light/Dark buttons (test/widget-preview.html), which is the
+       only thing that ever sets that attribute. So the harness cannot show you what the real
+       device renders unless the @media block and the [data-theme='dark'] block stay in sync:
+       a dark-mode value edited in one but not the other looks perfect in the harness and ships
+       broken. (prefers-color-scheme is itself only a best-effort signal, per power-flow's own
+       documented caveat that it can drift from Homey's actual, OS-independent theme setting.)
+
+       Zone mix percentages are tuned per color, not shared: at equal alpha the four hues carry
+       very different perceptual weight, and all four must stay light enough for the reading
+       line and its dots to stay legible on top of them. They bump *less* for dark than you'd
+       expect - unlike the single green band they replaced (which sat alone on an otherwise
+       empty chart and needed a big dark-mode bump to show up at all), these four tile the
+       entire plot area, so their weight is cumulative. Verified in both themes via the harness.
+       Yellow is a literal hex rather than a --homey-color-* reference because Homey's palette
+       has no yellow at all (it stops at blue/green/orange/red/mono) - the one place this file
+       names a raw color. */
+    :root {
+      --spark-yellow: #ffc800;
+      --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 10%, transparent);
+      --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 12%, transparent);
+      --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 10%, transparent);
+      --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 16%, transparent);
+      --spark-line-normal: var(--homey-color-blue-600);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 16%, transparent);
+        --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 15%, transparent);
+        --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 13%, transparent);
+        --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 13%, transparent);
+      }
+    }
+    :root[data-theme='dark'] {
+      --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 16%, transparent);
+      --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 15%, transparent);
+      --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 13%, transparent);
+      --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 13%, transparent);
+    }
+    :root[data-theme='light'] {
+      --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 10%, transparent);
+      --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 12%, transparent);
+      --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 10%, transparent);
+      --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 16%, transparent);
+    }
+
+    /* Header row: name/age (left) beside a right-aligned value+trend (the primary
+       glance-value). The alarm pill sits inline right after the name, on the same row -
+       align-items: baseline on .name-row lines up the badge's text baseline with the name's,
+       and .badge's own margin-left is the "breathing room" gap between them (rather than a
+       separate flex slot). .main stays at the row's default flex-start (top) alignment since
+       it no longer has a baseline partner to match. */
+    .headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--homey-su-2); }
+    .meta { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 1 1 auto; min-width: 0; }
+    .name-row { display: flex; align-items: baseline; min-width: 0; }
+    .ago { color: var(--homey-text-color-light); white-space: nowrap; }
+
+    .main { display: flex; align-items: center; gap: var(--homey-su-2); flex: 0 0 auto; }
+    .value { font-size: 34px; font-weight: var(--homey-font-weight-medium); font-variant-numeric: tabular-nums; line-height: 1; }
+    .value .unit { font-size: 14px; color: var(--homey-text-color-light); margin-left: 4px; }
+    .trend { display: inline-flex; }
+    .trend-icon {
+      width: 24px; height: 24px; display: block; transform-origin: 50% 50%;
+      fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* Same font-size/weight as .name (homey-text-bold on both) so the pill reads as a peer of
+       the device name, not a smaller sub-label - text-transform: uppercase kept regardless of
+       casing in the underlying badge text. margin-left is the "breathing room" after the name.
+
+       The pill read bottom-heavy on a real Homey. Its padding wraps the *line box*, which always
+       reserves room for descenders, but text-transform: uppercase means no glyph in it ever has
+       one - so that reserved strip sits empty under the baseline and reads as extra padding
+       below the text. The size of that gap is purely a function of the font's own metrics
+       (descent vs. ascent-minus-cap-height), which is why it's plainly visible on-device yet
+       measures only ~0.5px in test/widget-preview.html, whose font stack merely approximates
+       Homey's real one (see the harness's own caveat) - so there is no fixed px nudge that could
+       honestly be tuned here, only against the wrong font. text-box trims the line box to
+       exactly cap-height..baseline instead, which makes symmetric padding center the real glyphs
+       on *any* font, no per-font tuning. Padding then sets the pill's height outright rather
+       than line-height doing it: cap-height + 2x --homey-su-2 lands at ~30px, what the old
+       line-height-driven box already came to, so the header row's height is unchanged. Clients
+       predating text-box (Chrome <133 / Safari <18.2) just keep the old uncorrected rendering. */
+    .badge {
+      display: inline-block; margin-left: var(--homey-su-4); padding: 1px var(--homey-su-2);
+      border-radius: var(--homey-border-radius-default); text-transform: uppercase;
+    }
+    @supports (text-box: trim-both cap alphabetic) {
+      .badge { text-box: trim-both cap alphabetic; padding: var(--homey-su-2); }
+    }
+    .badge:empty { display: none; }
+    .badge.urgent-low { color: var(--homey-color-red); background: color-mix(in srgb, var(--homey-color-red) 22%, transparent); }
+    .badge.low { color: var(--homey-color-orange); background: color-mix(in srgb, var(--homey-color-orange) 22%, transparent); }
+    .badge.high { color: var(--homey-color-orange); background: color-mix(in srgb, var(--homey-color-orange) 22%, transparent); }
+    .badge.no-data { color: var(--homey-text-color-light); background: color-mix(in srgb, var(--homey-text-color-light) 22%, transparent); }
+
+    /* 50% taller than the original 56px/viewBox-60 chart (see the matching viewBox height and
+       sparkline() height argument in the script below - all three must move together). */
+    .spark { display: block; width: 100%; height: 84px; margin-top: var(--homey-su-2); overflow: visible; }
+    .spark .zone.urgent-low { fill: var(--spark-zone-urgent-low); }
+    .spark .zone.low { fill: var(--spark-zone-low); }
+    .spark .zone.normal { fill: var(--spark-zone-normal); }
+    .spark .zone.high { fill: var(--spark-zone-high); }
+    .spark .line { fill: none; stroke: var(--spark-line-normal); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .spark .line.urgent-low { stroke: var(--homey-color-red); }
+    .spark .line.low, .spark .line.high { stroke: var(--homey-color-orange); }
+    /* One dot per sample, on top of the line(s) - see GD.sparkline's own comment on why: a
+       sample stranded between two gaps isn't part of any 2-point line segment, so without its
+       own dot it would be invisible even though it's a real reading. */
+    .spark .dot { fill: var(--spark-line-normal); }
+    .spark .dot.urgent-low { fill: var(--homey-color-red); }
+    .spark .dot.low, .spark .dot.high { fill: var(--homey-color-orange); }
+    /* The domain's two edges carry a value label but no rule of their own - the shaded zones
+       already tile the whole plot area, so their outer edges mark the same two boundaries a
+       gridline would have drawn. */
+    .spark .tick-label { fill: var(--homey-text-color-light); font-size: 9px; font-family: inherit; }
+
+    .empty { color: var(--homey-text-color-light); }
+  </style>
+</head>
+<body class="homey-text-regular">
+  <div class="card homey-widget" id="card">
+    <div class="headrow">
+      <div class="meta">
+        <div class="name-row">
+          <div class="name homey-text-bold" id="name"></div>
+          <div class="badge homey-text-bold" id="badge"></div>
+        </div>
+        <div class="ago homey-text-small-light" id="ago"></div>
+      </div>
+      <div class="main">
+        <div class="value" id="value">–</div>
+        <div class="trend" id="trend"></div>
+      </div>
+    </div>
+    <svg class="spark" id="spark" viewBox="0 0 260 90" preserveAspectRatio="none"></svg>
+  </div>
+
+  <script type="text/javascript">
+    // === GLUCOSE-LOGIC-START (inlined so the widget is self-contained; the test suite
+    // extracts this exact block, so keep it dependency-free) ===
+    var GD = {
+      // Every direction maps to one of four icon *shapes* - a single chevron-arrow (rotated per
+      // direction, so all five straight/diagonal trends share one consistent glyph), a stacked
+      // double-chevron for the two rapid trends, or a small question/dash glyph for the two
+      // directions Dexcom can't render as a meaningful arrow at all. Kept as pure data here
+      // (shape + rotation) rather than building markup, matching how sparkline() below returns
+      // geometry and leaves HTML-building to render() - the actual <svg> strings live in
+      // trendIconMarkup(), outside this dependency-free block.
+      TREND_ICON_SHAPE: {
+        None: '', DoubleUp: 'double', SingleUp: 'arrow', FortyFiveUp: 'arrow', Flat: 'arrow',
+        FortyFiveDown: 'arrow', SingleDown: 'arrow', DoubleDown: 'double',
+        NotComputable: 'question', RateOutOfRange: 'dash',
+      },
+      TREND_ICON_ROTATION: {
+        SingleUp: 0, FortyFiveUp: 45, Flat: 90, FortyFiveDown: 135, SingleDown: 180,
+        DoubleUp: 0, DoubleDown: 180,
+      },
+      trendIcon: function (direction) {
+        return {
+          shape: GD.TREND_ICON_SHAPE[direction] || '',
+          rotation: GD.TREND_ICON_ROTATION[direction] || 0,
+        };
+      },
+      // Mirrors lib/dexcom/units.ts's own rounding convention (kept dependency-free here on
+      // purpose, same reasoning as that module's own comment on why it doesn't import the
+      // vendor constant either).
+      mgdlToMmol: function (mgdl) { return Math.round(mgdl * 0.0555 * 10) / 10; },
+      // Dexcom's own documented sensor range (40-400 mg/dL, ~2.2-22.2 mmol/L) - the sparkline's
+      // y-axis is fixed to this regardless of the actual reading/threshold values passed in, so
+      // the chart's vertical scale reads consistently widget-to-widget and refresh-to-refresh,
+      // rather than rescaling to whatever narrow band a given 3h window happened to sit in.
+      DEXCOM_MIN_MGDL: 40,
+      DEXCOM_MAX_MGDL: 400,
+      // Matches DexcomPoller's own getGlucoseReadings(180, 36) window (see CLAUDE.md's
+      // Architecture section) - the x-axis is always exactly this wide, anchored to "now"
+      // (see sparkline's own opts.nowMs), not to whatever span the actual samples happen to
+      // cover, so a stale tail (no recent readings) shows as trailing empty space instead of
+      // silently stretching old samples across the full card width.
+      WINDOW_MS: 3 * 60 * 60 * 1000,
+      // Normal cadence is ~5 min (see DexcomPoller) - a gap wider than this between two
+      // consecutive samples means at least one reading was actually missing, not just clock
+      // jitter, and should draw as a visible break rather than a straight line bridging it.
+      GAP_THRESHOLD_MS: 8 * 60 * 1000,
+      toDisplay: function (mgdl, units) { return units === 'mmol' ? GD.mgdlToMmol(mgdl) : Math.round(mgdl); },
+      unitSuffix: function (units) { return units === 'mmol' ? 'mmol/L' : 'mg/dL'; },
+      fmtValue: function (mgdl, units) {
+        if (mgdl == null) return '–';
+        var v = GD.toDisplay(mgdl, units);
+        return units === 'mmol' ? v.toFixed(1) : String(v);
+      },
+      // Formats an already-display-unit value (e.g. a sparkline domain edge) for an axis
+      // label - distinct from fmtValue, which formats a raw mg/dL reading and handles null.
+      fmtTick: function (v, units) {
+        return units === 'mmol' ? (Math.round(v * 10) / 10).toFixed(1) : String(Math.round(v));
+      },
+      severity: function (alarms) {
+        alarms = alarms || {};
+        if (alarms.urgentLow) return 'urgent-low';
+        if (alarms.low) return 'low';
+        if (alarms.high) return 'high';
+        return 'normal';
+      },
+      // Returns a translation *key* (noData/urgentLow/low/high/''), not display text - this
+      // block stays dependency-free (no Homey.__ reference), so the actual localized string is
+      // looked up by badgeLabel() below, outside GLUCOSE-LOGIC, via the app's /locales/*.json.
+      // noData is checked *first*, ahead of any severity band: the poller never clears
+      // mgDl/trendDirection when a device goes stale (they're just the last-known reading), so
+      // a severity band computed from that reading is no longer trustworthy either - matches
+      // Dexcom's own official app, which shows plain "No Data" rather than continuing to assert
+      // e.g. "High" from a reading that's now 30+ minutes old.
+      badgeText: function (alarms) {
+        alarms = alarms || {};
+        if (alarms.noData) return 'noData';
+        if (alarms.urgentLow) return 'urgentLow';
+        if (alarms.low) return 'low';
+        if (alarms.high) return 'high';
+        return '';
+      },
+      // 1:1 with badgeText()'s own return keys - single source of truth for the badge's CSS
+      // class, so the pill's color can never disagree with its own text again (a real bug: the
+      // old render() derived the class from a *separate* noData-vs-severity check that didn't
+      // match badgeText()'s own precedence, producing a grey-styled "HIGH" pill).
+      BADGE_CLASS: { noData: 'no-data', urgentLow: 'urgent-low', low: 'low', high: 'high' },
+      // Returns a { key, hours?, minutes? } descriptor rather than formatted text, for the same
+      // dependency-free reason as badgeText() above - agoLabel() below turns this into a
+      // localized string via Homey.__(), with {{hours}}/{{minutes}} tag interpolation.
+      fmtAgo: function (updatedAtMs, nowMs) {
+        if (updatedAtMs == null) return { key: 'noDataAgo' };
+        var diffMin = Math.max(0, Math.round((nowMs - updatedAtMs) / 60000));
+        if (diffMin < 1) return { key: 'justNow' };
+        if (diffMin < 60) return { key: 'minutesAgo', minutes: diffMin };
+        var h = Math.floor(diffMin / 60);
+        var m = diffMin % 60;
+        return m ? { key: 'hoursMinutesAgo', hours: h, minutes: m } : { key: 'hoursAgo', hours: h };
+      },
+      // Maps a mg/dL history (+ optional low/high mg/dL thresholds) onto a W x H viewport, over
+      // a fixed WINDOW_MS-wide x-axis anchored to "now" (opts.nowMs, defaulting to Date.now()
+      // outside a test). The y-axis domain is likewise fixed to Dexcom's own sensor range
+      // (DEXCOM_MIN_MGDL/MAX_MGDL) rather than the data's own min/max, so a threshold or reading
+      // is always within bounds without needing to widen/pad the domain per-render.
+      //
+      // Returns `segments` (one points-string per contiguous run of samples with no
+      // GAP_THRESHOLD_MS-or-wider hole between them - only runs of 2+ points, since a lone
+      // point can't form a line) and `dots` (every in-window sample's {x,y}, regardless of
+      // which segment or none it belongs to - a sample stranded between two gaps would
+      // otherwise vanish entirely, since it's not part of any 2-point segment). Also returns
+      // the shaded severity `zones` (see ZONES below) and the y-axis tick labels. y is
+      // inverted (SVG down = positive) since higher glucose draws higher.
+      sparkline: function (history, units, opts) {
+        opts = opts || {};
+        var W = opts.width || 260;
+        var H = opts.height || 90;
+        var t1 = opts.nowMs != null ? opts.nowMs : Date.now();
+        var t0 = t1 - GD.WINDOW_MS;
+        if (!history || history.length === 0) return { segments: [], dots: [], zones: [], yTicks: [] };
+
+        var domainMin = GD.toDisplay(GD.DEXCOM_MIN_MGDL, units);
+        var domainMax = GD.toDisplay(GD.DEXCOM_MAX_MGDL, units);
+
+        var toXY = function (t, v) {
+          var x = ((t - t0) / (t1 - t0)) * W;
+          var y = H - ((v - domainMin) / (domainMax - domainMin)) * H;
+          return { x: x, y: y };
+        };
+        // Samples outside the fixed window are dropped, not just left off-screen - e.g. after
+        // a long outage, an old sample would otherwise land at a negative x.
+        var pts = history
+          .filter(function (p) { return p.t >= t0 && p.t <= t1; })
+          .map(function (p) { var xy = toXY(p.t, GD.toDisplay(p.v, units)); return { x: xy.x, y: xy.y, t: p.t }; });
+
+        var segments = [];
+        var current = [];
+        pts.forEach(function (p, i) {
+          if (i > 0 && (p.t - pts[i - 1].t) > GD.GAP_THRESHOLD_MS) {
+            if (current.length > 1) segments.push(current);
+            current = [];
+          }
+          current.push(p);
+        });
+        if (current.length > 1) segments.push(current);
+        var segmentPoints = segments.map(function (seg) {
+          return seg.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+        });
+
+        var valueY = function (mgdl) {
+          var v = GD.toDisplay(mgdl, units);
+          return H - ((v - domainMin) / (domainMax - domainMin)) * H;
+        };
+        // The three thresholds cut the fixed sensor-range domain into four contiguous severity
+        // zones, each shaded its own color (see the --spark-zone-* tokens) so a reading's
+        // position reads as in/out of range at a glance without decoding the y-axis. A zone is
+        // dropped if either bound is missing (a threshold this caller didn't supply) or if it
+        // would be zero-height - the latter also absorbs a nonsensical threshold ordering
+        // (e.g. low above high), which would otherwise draw an inverted rect.
+        var zones = [
+          { cls: 'urgent-low', lo: GD.DEXCOM_MIN_MGDL, hi: opts.urgentLowMgDl },
+          { cls: 'low', lo: opts.urgentLowMgDl, hi: opts.lowMgDl },
+          { cls: 'normal', lo: opts.lowMgDl, hi: opts.highMgDl },
+          { cls: 'high', lo: opts.highMgDl, hi: GD.DEXCOM_MAX_MGDL },
+        ].filter(function (z) {
+          return z.lo != null && z.hi != null;
+        }).map(function (z) {
+          var yTop = valueY(z.hi);
+          return { cls: z.cls, y: yTop, height: valueY(z.lo) - yTop };
+        }).filter(function (z) {
+          return z.height > 0;
+        });
+        // Value-axis scale: labels the two horizontal edges of the fixed sensor-range domain,
+        // so the chart reads as more than an unscaled squiggle - top edge is always the
+        // higher value since y is inverted (see toXY above).
+        var yTicks = [
+          { y: 0, label: GD.fmtTick(domainMax, units) },
+          { y: H, label: GD.fmtTick(domainMin, units) },
+        ];
+        return {
+          segments: segmentPoints,
+          dots: pts.map(function (p) { return { x: p.x, y: p.y }; }),
+          zones: zones,
+          yTicks: yTicks,
+        };
+      },
+    };
+    // === GLUCOSE-LOGIC-END ===
+
+    var lastPayload = null;
+
+    // Set once onHomeyReady fires (see below) - stays null when this file is driven directly
+    // (test/widget-preview.html calls render()/onData() straight, bypassing onHomeyReady
+    // entirely per its own doc comment further down), in which case t()/agoLabel()/badgeLabel()
+    // fall back to English so the dev harness still renders readable text.
+    var HomeyRef = null;
+    var WIDGET_STRING_FALLBACK = {
+      urgentLow: 'Urgent Low', low: 'Low', high: 'High', noData: 'No Data',
+      noDataAgo: 'No data', justNow: 'Just now', pickUser: 'Pick a user in widget settings',
+      minutesAgo: '{{minutes}}m ago', hoursAgo: '{{hours}}h ago', hoursMinutesAgo: '{{hours}}h {{minutes}}m ago',
+    };
+    // Interpolation is always done here, never delegated to Homey.__()'s own tags argument -
+    // on a real Homey widget that argument is silently ignored (confirmed on-device: the raw
+    // "{{minutes}}m ago" template came back unsubstituted), so tags are applied to whatever
+    // template string comes back, whether that's Homey's own translation or the local fallback.
+    function t(key, tags) {
+      var s = (HomeyRef && HomeyRef.__) ? HomeyRef.__('widget.glucoseDashboard.' + key) : (WIDGET_STRING_FALLBACK[key] || key);
+      if (tags) Object.keys(tags).forEach(function (k) { s = s.replace('{{' + k + '}}', tags[k]); });
+      return s;
+    }
+    // badgeText()/fmtAgo() (GLUCOSE-LOGIC above) return translation keys, not display text -
+    // these two turn a key (or key+tags descriptor) into the actual localized string.
+    function badgeLabel(key) { return key ? t(key) : ''; }
+    function agoLabel(ago) {
+      if (ago.key === 'minutesAgo') return t('minutesAgo', { minutes: ago.minutes });
+      if (ago.key === 'hoursAgo') return t('hoursAgo', { hours: ago.hours });
+      if (ago.key === 'hoursMinutesAgo') return t('hoursMinutesAgo', { hours: ago.hours, minutes: ago.minutes });
+      return t(ago.key);
+    }
+
+    // Same single-glyph-rotated-per-direction shape GD.trendIcon() describes, drawn as a plain
+    // shaft+chevron "arrow-up" (rotated for the other four straight/diagonal directions), a
+    // stacked double-chevron for DoubleUp/DoubleDown, and small question/dash glyphs for the two
+    // non-directional trends - one consistent stroke width/cap/join across all of them so they
+    // read as one icon set rather than mixed unicode glyphs.
+    var TREND_ICON_INNER = {
+      arrow: '<line x1="12" y1="19" x2="12" y2="5"></line><polyline points="6,11 12,5 18,11"></polyline>',
+      double: '<polyline points="5,17 12,10 19,17"></polyline><polyline points="5,11 12,4 19,11"></polyline>',
+      question: '<circle cx="12" cy="12" r="9"></circle>'
+        + '<path d="M9.3 9.3a2.7 2.7 0 1 1 3.9 2.4c-1 .5-1.6 1.1-1.6 2.3"></path>'
+        + '<circle cx="12" cy="17.3" r=".9" fill="currentColor" stroke="none"></circle>',
+      dash: '<line x1="6" y1="12" x2="18" y2="12"></line>',
+    };
+
+    function trendIconMarkup(direction) {
+      var icon = GD.trendIcon(direction);
+      var inner = TREND_ICON_INNER[icon.shape];
+      if (!inner) return '';
+      var style = icon.rotation ? ' style="transform: rotate(' + icon.rotation + 'deg)"' : '';
+      return '<svg class="trend-icon" viewBox="0 0 24 24"' + style + '>' + inner + '</svg>';
+    }
+
+    function render(payload) {
+      lastPayload = payload;
+      var units = (payload && payload.units) || 'mgdl';
+
+      document.getElementById('name').textContent = payload ? payload.name : '';
+
+      if (!payload) {
+        document.getElementById('value').textContent = '–';
+        document.getElementById('trend').textContent = '';
+        document.getElementById('ago').textContent = '';
+        document.getElementById('badge').textContent = '';
+        document.getElementById('badge').className = 'badge homey-text-bold';
+        document.getElementById('spark').innerHTML = '';
+        return;
+      }
+
+      var severity = GD.severity(payload.alarms);
+      var noData = !!(payload.alarms && payload.alarms.noData);
+      // The poller never clears mgDl/trendDirection when a device goes stale - they're just the
+      // last-known reading, sitting there indefinitely. Once noData is set, that reading is no
+      // longer trustworthy enough to headline, so it's blanked the same way the no-payload-yet
+      // placeholder above is, rather than quietly displaying an increasingly-stale value/trend
+      // as if it were current (matches Dexcom's own official app).
+      if (noData) {
+        document.getElementById('value').textContent = '–';
+        document.getElementById('trend').innerHTML = '';
+      } else {
+        document.getElementById('value').innerHTML = GD.fmtValue(payload.mgDl, units)
+          + '<span class="unit">' + GD.unitSuffix(units) + '</span>';
+        document.getElementById('trend').innerHTML = trendIconMarkup(payload.trendDirection);
+      }
+      document.getElementById('ago').textContent = agoLabel(GD.fmtAgo(payload.updatedAt, Date.now()));
+
+      var badgeEl = document.getElementById('badge');
+      var badgeKey = GD.badgeText(payload.alarms);
+      badgeEl.textContent = badgeLabel(badgeKey);
+      badgeEl.className = 'badge homey-text-bold' + (badgeKey ? ' ' + GD.BADGE_CLASS[badgeKey] : '');
+
+      var spark = GD.sparkline(payload.history, units, {
+        width: 260,
+        height: 90,
+        urgentLowMgDl: payload.urgentLowMgDl,
+        lowMgDl: payload.lowMgDl,
+        highMgDl: payload.highMgDl,
+        nowMs: Date.now(),
+      });
+      var sparkEl = document.getElementById('spark');
+      var zones = (spark.zones || []).map(function (z) {
+        return '<rect class="zone ' + z.cls + '" x="0" y="' + z.y.toFixed(1) + '" width="260" height="'
+          + z.height.toFixed(1) + '"></rect>';
+      }).join('');
+      // One <polyline> per gap-free run (see GD.sparkline) so a real data gap draws as a break,
+      // not a straight line bridging it, plus one <circle> per sample so a point stranded
+      // between two gaps still shows up even without a line either side of it.
+      var lines = (spark.segments || []).map(function (pts) {
+        return '<polyline class="line ' + severity + '" points="' + pts + '"></polyline>';
+      }).join('');
+      var dots = (spark.dots || []).map(function (p) {
+        return '<circle class="dot ' + severity + '" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.6"></circle>';
+      }).join('');
+      var tickLabels = (spark.yTicks || []).map(function (t) {
+        // Baseline nudged in from the exact edge (a label at y=0/y=H would otherwise clip
+        // against the viewport top/bottom).
+        var textY = t.y === 0 ? 9 : t.y - 3;
+        return '<text class="tick-label" x="2" y="' + textY + '">' + t.label + '</text>';
+      }).join('');
+      sparkEl.innerHTML = zones + tickLabels + lines + dots;
+    }
+
+    // Diagnostics: this widget's own console (webview debugger, see CLAUDE.md's Widget
+    // section on `homey app run`'s debug/refresh flow) is the only visibility into whether
+    // the bound device setting resolved to anything, and whether the realtime push and/or the
+    // Homey.api() poll are actually firing - same pattern as pair/login.html's own diag().
+    function diag(msg, extra) {
+      // eslint-disable-next-line no-console
+      console.log('[dexcom-widget] ' + msg, extra !== undefined ? extra : '');
+    }
+
+    var CHECK_MS = 5000;
+    var POLL_MS = 30000; // pull-based resync, independent of the realtime push - see onHomeyReady
+    var STALE_MS = 180000; // dim after ~3 missed 60s broadcasts, then auto-recover
+    var lastOkAt = 0;
+    var hadData = false;
+    var boundDeviceId = null;
+    var pollTimer = null;
+
+    function applyStale() {
+      var stale = hadData && (Date.now() - lastOkAt > STALE_MS);
+      document.getElementById('card').className = 'card homey-widget' + (stale ? ' stale' : '');
+      if (lastPayload) document.getElementById('ago').textContent = agoLabel(GD.fmtAgo(lastPayload.updatedAt, Date.now()));
+    }
+
+    function onData(result) {
+      if (!result || typeof result !== 'object') return;
+      lastOkAt = Date.now(); hadData = true;
+      render(result); applyStale();
+    }
+
+    // Pull-based fallback for the realtime push above - see CLAUDE.md's Widget section for why
+    // both exist (a confirmed real bug: Homey's native per-device "devices" widget setting
+    // handed the widget an id this app had no documented way to translate back into one of its
+    // own devices). Backed by widgets/glucose-dashboard/api.js's getState endpoint, which logs
+    // the same lookup on the app side, so a mismatch would be visible from both ends at once.
+    function pollState() {
+      if (!boundDeviceId) return;
+      Homey.api('GET', '/state?id=' + encodeURIComponent(boundDeviceId), {})
+        .then(function (result) {
+          diag('poll result', result ? 'payload received' : 'null (no matching device found server-side)');
+          onData(result);
+        })
+        .catch(function (err) {
+          diag('poll failed', (err && err.message) || err);
+        });
+    }
+
+    // Guarded against Homey re-invoking onHomeyReady on every dashboard remount, same
+    // duplicate-listener fix as widgets/power-flow (see its own comment for the incident
+    // this prevents).
+    var readyListenerAttached = false;
+    var staleTimer = null;
+
+    function onHomeyReady(Homey) {
+      HomeyRef = Homey;
+      Homey.ready();
+      render(null);
+      if (!readyListenerAttached) {
+        readyListenerAttached = true;
+        // This widget instance is bound to exactly one follower via its own "device"
+        // autocomplete setting (widget.compose.json + app.ts's
+        // registerWidgetDevicePicker) - not Homey's native "devices" widget setting, which
+        // handed back an id this app had no documented way to resolve to one of its own
+        // devices (see CLAUDE.md's Widget section). The settings value is populated with this
+        // app's own data.id, so it needs no separate translation step here.
+        var deviceSetting = Homey.getSettings().device;
+        diag('Homey.getSettings().device', deviceSetting);
+        boundDeviceId = (deviceSetting && deviceSetting.id) || null;
+        if (boundDeviceId) {
+          // One shared channel for every follower (see broadcastDeviceState's own comment on
+          // why a per-device dynamic channel name is exactly what broke) - filter to this
+          // widget's own bound device client-side.
+          Homey.on('glucose', function (result) {
+            if (!result || result.id !== boundDeviceId) return;
+            diag('realtime push received');
+            onData(result);
+          });
+          pollState();
+          pollTimer = setInterval(pollState, POLL_MS);
+        } else {
+          diag('no bound device - pick a follower in this widget\'s own settings');
+          document.getElementById('name').textContent = t('pickUser');
+        }
+      }
+      if (staleTimer) clearInterval(staleTimer);
+      staleTimer = setInterval(applyStale, CHECK_MS);
+    }
+  </script>
+</body>
+</html>

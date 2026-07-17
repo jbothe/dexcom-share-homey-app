@@ -1,0 +1,14 @@
+{
+  "type": "boolean",
+  "title": { "en": "Low", "de": "Niedrig", "nl": "Laag" },
+  "desc": {
+    "en": "Glucose is at or below the low threshold",
+    "de": "Glukose ist auf oder unter der unteren Schwelle",
+    "nl": "Glucose is op of onder de lage drempel"
+  },
+  "icon": "/assets/capabilities/alarm_low.svg",
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true
+}

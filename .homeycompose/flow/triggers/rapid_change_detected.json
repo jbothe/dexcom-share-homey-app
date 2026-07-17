@@ -1,0 +1,13 @@
+{
+  "title": {
+    "en": "Glucose is rising or falling quickly",
+    "de": "Glukose steigt oder fällt schnell",
+    "nl": "Glucose stijgt of daalt snel"
+  },
+  "tokens": [
+    { "name": "direction", "type": "string", "title": { "en": "Direction", "de": "Richtung", "nl": "Richting" } }
+  ],
+  "args": [
+    { "type": "device", "name": "device", "filter": "driver_id=follower" }
+  ]
+}

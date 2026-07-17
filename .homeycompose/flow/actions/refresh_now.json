@@ -1,0 +1,10 @@
+{
+  "title": {
+    "en": "Refresh glucose now",
+    "de": "Glukose jetzt aktualisieren",
+    "nl": "Glucose nu vernieuwen"
+  },
+  "args": [
+    { "type": "device", "name": "device", "filter": "driver_id=follower" }
+  ]
+}

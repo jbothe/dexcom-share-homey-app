@@ -1,0 +1,976 @@
+{
+  "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
+  "id": "family.bothe.dexcom",
+  "version": "1.0.0",
+  "compatibility": ">=12.4.0",
+  "sdk": 3,
+  "runtime": "nodejs",
+  "platforms": [
+    "local",
+    "cloud"
+  ],
+  "name": {
+    "en": "Dexcom Share",
+    "de": "Dexcom Share",
+    "nl": "Dexcom Share"
+  },
+  "description": {
+    "en": "Add support for viewing Dexcom CGM data.",
+    "de": "Fügt Unterstützung für die Anzeige von Dexcom-CGM-Daten hinzu.",
+    "nl": "Voegt ondersteuning toe voor het bekijken van Dexcom CGM-gegevens."
+  },
+  "category": [
+    "tools"
+  ],
+  "permissions": [],
+  "brandColor": "#00B000",
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "John Bothe",
+    "email": "jbothe@gmail.com"
+  },
+  "flow": {
+    "triggers": [
+      {
+        "title": {
+          "en": "Glucose changed",
+          "de": "Glukose geändert",
+          "nl": "Glucose gewijzigd"
+        },
+        "tokens": [
+          {
+            "name": "glucose",
+            "type": "number",
+            "title": {
+              "en": "Glucose",
+              "de": "Glukose",
+              "nl": "Glucose"
+            }
+          },
+          {
+            "name": "mmol",
+            "type": "number",
+            "title": {
+              "en": "Glucose (mmol/L)",
+              "de": "Glukose (mmol/L)",
+              "nl": "Glucose (mmol/L)"
+            }
+          },
+          {
+            "name": "trend",
+            "type": "string",
+            "title": {
+              "en": "Trend",
+              "de": "Trend",
+              "nl": "Trend"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          }
+        ],
+        "id": "glucose_changed"
+      },
+      {
+        "title": {
+          "en": "Glucose became high",
+          "de": "Glukose wurde hoch",
+          "nl": "Glucose werd hoog"
+        },
+        "tokens": [
+          {
+            "name": "glucose",
+            "type": "number",
+            "title": {
+              "en": "Glucose",
+              "de": "Glukose",
+              "nl": "Glucose"
+            }
+          },
+          {
+            "name": "mmol",
+            "type": "number",
+            "title": {
+              "en": "Glucose (mmol/L)",
+              "de": "Glukose (mmol/L)",
+              "nl": "Glucose (mmol/L)"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          }
+        ],
+        "id": "high_detected"
+      },
+      {
+        "title": {
+          "en": "Glucose became low",
+          "de": "Glukose wurde niedrig",
+          "nl": "Glucose werd laag"
+        },
+        "tokens": [
+          {
+            "name": "glucose",
+            "type": "number",
+            "title": {
+              "en": "Glucose",
+              "de": "Glukose",
+              "nl": "Glucose"
+            }
+          },
+          {
+            "name": "mmol",
+            "type": "number",
+            "title": {
+              "en": "Glucose (mmol/L)",
+              "de": "Glukose (mmol/L)",
+              "nl": "Glucose (mmol/L)"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          }
+        ],
+        "id": "low_detected"
+      },
+      {
+        "title": {
+          "en": "No new glucose data",
+          "de": "Keine neuen Glukosedaten",
+          "nl": "Geen nieuwe glucosegegevens"
+        },
+        "tokens": [
+          {
+            "name": "minutes",
+            "type": "number",
+            "title": {
+              "en": "Minutes since last reading",
+              "de": "Minuten seit letztem Messwert",
+              "nl": "Minuten sinds laatste meting"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          }
+        ],
+        "id": "no_data_detected"
+      },
+      {
+        "title": {
+          "en": "Glucose is rising or falling quickly",
+          "de": "Glukose steigt oder fällt schnell",
+          "nl": "Glucose stijgt of daalt snel"
+        },
+        "tokens": [
+          {
+            "name": "direction",
+            "type": "string",
+            "title": {
+              "en": "Direction",
+              "de": "Richtung",
+              "nl": "Richting"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          }
+        ],
+        "id": "rapid_change_detected"
+      },
+      {
+        "title": {
+          "en": "Glucose became urgent low",
+          "de": "Glukose wurde dringend niedrig",
+          "nl": "Glucose werd urgent laag"
+        },
+        "tokens": [
+          {
+            "name": "glucose",
+            "type": "number",
+            "title": {
+              "en": "Glucose",
+              "de": "Glukose",
+              "nl": "Glucose"
+            }
+          },
+          {
+            "name": "mmol",
+            "type": "number",
+            "title": {
+              "en": "Glucose (mmol/L)",
+              "de": "Glukose (mmol/L)",
+              "nl": "Glucose (mmol/L)"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          }
+        ],
+        "id": "urgent_low_detected"
+      }
+    ],
+    "conditions": [
+      {
+        "title": {
+          "en": "Glucose is !{{above|not above}}",
+          "de": "Glukose ist !{{über|nicht über}}",
+          "nl": "Glucose is !{{boven|niet boven}}"
+        },
+        "titleFormatted": {
+          "en": "Glucose is !{{above|not above}} [[value]]",
+          "de": "Glukose ist !{{über|nicht über}} [[value]]",
+          "nl": "Glucose is !{{boven|niet boven}} [[value]]"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          },
+          {
+            "type": "number",
+            "name": "value",
+            "title": {
+              "en": "Value",
+              "de": "Wert",
+              "nl": "Waarde"
+            },
+            "placeholder": {
+              "en": "In the unit selected in this device's settings",
+              "de": "In der in den Geräteeinstellungen gewählten Einheit",
+              "nl": "In de eenheid die in de apparaatinstellingen is gekozen"
+            },
+            "min": 0,
+            "max": 400,
+            "step": 0.1,
+            "value": 180
+          }
+        ],
+        "id": "glucose_above"
+      },
+      {
+        "title": {
+          "en": "Glucose is !{{below|not below}}",
+          "de": "Glukose ist !{{unter|nicht unter}}",
+          "nl": "Glucose is !{{onder|niet onder}}"
+        },
+        "titleFormatted": {
+          "en": "Glucose is !{{below|not below}} [[value]]",
+          "de": "Glukose ist !{{unter|nicht unter}} [[value]]",
+          "nl": "Glucose is !{{onder|niet onder}} [[value]]"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          },
+          {
+            "type": "number",
+            "name": "value",
+            "title": {
+              "en": "Value",
+              "de": "Wert",
+              "nl": "Waarde"
+            },
+            "placeholder": {
+              "en": "In the unit selected in this device's settings",
+              "de": "In der in den Geräteeinstellungen gewählten Einheit",
+              "nl": "In de eenheid die in de apparaatinstellingen is gekozen"
+            },
+            "min": 0,
+            "max": 400,
+            "step": 0.1,
+            "value": 70
+          }
+        ],
+        "id": "glucose_below"
+      },
+      {
+        "title": {
+          "en": "Trend !{{is|is not}}",
+          "de": "Trend !{{ist|ist nicht}}",
+          "nl": "Trend !{{is|is niet}}"
+        },
+        "titleFormatted": {
+          "en": "Trend !{{is|is not}} [[direction]]",
+          "de": "Trend !{{ist|ist nicht}} [[direction]]",
+          "nl": "Trend !{{is|is niet}} [[direction]]"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          },
+          {
+            "type": "dropdown",
+            "name": "direction",
+            "values": [
+              {
+                "id": "None",
+                "label": {
+                  "en": "Unavailable",
+                  "de": "Nicht verfügbar",
+                  "nl": "Niet beschikbaar"
+                }
+              },
+              {
+                "id": "DoubleUp",
+                "label": {
+                  "en": "Rising quickly ↑︎↑︎",
+                  "de": "Steigt schnell ↑︎↑︎",
+                  "nl": "Stijgt snel ↑︎↑︎"
+                }
+              },
+              {
+                "id": "SingleUp",
+                "label": {
+                  "en": "Rising ↑︎",
+                  "de": "Steigt ↑︎",
+                  "nl": "Stijgt ↑︎"
+                }
+              },
+              {
+                "id": "FortyFiveUp",
+                "label": {
+                  "en": "Rising slightly ↗︎",
+                  "de": "Steigt leicht ↗︎",
+                  "nl": "Stijgt licht ↗︎"
+                }
+              },
+              {
+                "id": "Flat",
+                "label": {
+                  "en": "Steady →︎",
+                  "de": "Stabil →︎",
+                  "nl": "Stabiel →︎"
+                }
+              },
+              {
+                "id": "FortyFiveDown",
+                "label": {
+                  "en": "Falling slightly ↘︎",
+                  "de": "Fällt leicht ↘︎",
+                  "nl": "Daalt licht ↘︎"
+                }
+              },
+              {
+                "id": "SingleDown",
+                "label": {
+                  "en": "Falling ↓︎",
+                  "de": "Fällt ↓︎",
+                  "nl": "Daalt ↓︎"
+                }
+              },
+              {
+                "id": "DoubleDown",
+                "label": {
+                  "en": "Falling quickly ↓︎↓︎",
+                  "de": "Fällt schnell ↓︎↓︎",
+                  "nl": "Daalt snel ↓︎↓︎"
+                }
+              },
+              {
+                "id": "NotComputable",
+                "label": {
+                  "en": "Unable to determine trend",
+                  "de": "Trend kann nicht bestimmt werden",
+                  "nl": "Trend kan niet worden bepaald"
+                }
+              },
+              {
+                "id": "RateOutOfRange",
+                "label": {
+                  "en": "Trend unavailable",
+                  "de": "Trend nicht verfügbar",
+                  "nl": "Trend niet beschikbaar"
+                }
+              }
+            ]
+          }
+        ],
+        "id": "trend_is"
+      }
+    ],
+    "actions": [
+      {
+        "title": {
+          "en": "Refresh glucose now",
+          "de": "Glukose jetzt aktualisieren",
+          "nl": "Glucose nu vernieuwen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=follower"
+          }
+        ],
+        "id": "refresh_now"
+      }
+    ]
+  },
+  "drivers": [
+    {
+      "name": {
+        "en": "Dexcom User",
+        "de": "Dexcom User",
+        "nl": "Dexcom User"
+      },
+      "class": "sensor",
+      "capabilities": [
+        "measure_glucose",
+        "glucose_trend",
+        "glucose_data_age",
+        "alarm_urgent_low",
+        "alarm_low",
+        "alarm_high",
+        "alarm_rapid_change",
+        "alarm_no_data"
+      ],
+      "platforms": [
+        "local",
+        "cloud"
+      ],
+      "connectivity": [
+        "cloud"
+      ],
+      "images": {
+        "small": "/drivers/follower/assets/images/small.png",
+        "large": "/drivers/follower/assets/images/large.png",
+        "xlarge": "/drivers/follower/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "login"
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "id": "follower",
+      "settings": [
+        {
+          "type": "group",
+          "label": {
+            "en": "Dexcom Share account",
+            "de": "Dexcom Share-Konto",
+            "nl": "Dexcom Share-account"
+          },
+          "children": [
+            {
+              "id": "username",
+              "type": "text",
+              "label": {
+                "en": "Username",
+                "de": "Benutzername",
+                "nl": "Gebruikersnaam"
+              },
+              "hint": {
+                "en": "Dexcom Share username, email, or phone number of the person wearing the sensor — the same login they use in the G6/G7 app.",
+                "de": "Dexcom Share-Benutzername, E-Mail-Adresse oder Telefonnummer der Person, die den Sensor trägt — dieselben Zugangsdaten, die sie in der G6/G7-App verwendet.",
+                "nl": "Dexcom Share-gebruikersnaam, e-mailadres of telefoonnummer van de persoon die de sensor draagt — dezelfde inloggegevens die in de G6/G7-app worden gebruikt."
+              },
+              "value": ""
+            },
+            {
+              "id": "password",
+              "type": "password",
+              "label": {
+                "en": "Password",
+                "de": "Passwort",
+                "nl": "Wachtwoord"
+              },
+              "hint": {
+                "en": "Password for that same Dexcom Share account. Stored securely and only used to poll for glucose readings.",
+                "de": "Passwort desselben Dexcom Share-Kontos. Wird sicher gespeichert und nur verwendet, um Glukosewerte abzurufen.",
+                "nl": "Wachtwoord van datzelfde Dexcom Share-account. Wordt veilig opgeslagen en alleen gebruikt om glucosewaarden op te halen."
+              },
+              "value": ""
+            },
+            {
+              "id": "region",
+              "type": "dropdown",
+              "label": {
+                "en": "Region",
+                "de": "Region",
+                "nl": "Regio"
+              },
+              "hint": {
+                "en": "Which Dexcom Share server this account uses. Must match the region the G6/G7 app was set up with.",
+                "de": "Welchen Dexcom Share-Server dieses Konto verwendet. Muss mit der Region übereinstimmen, mit der die G6/G7-App eingerichtet wurde.",
+                "nl": "Welke Dexcom Share-server dit account gebruikt. Moet overeenkomen met de regio waarmee de G6/G7-app is ingesteld."
+              },
+              "value": "us",
+              "values": [
+                {
+                  "id": "us",
+                  "label": {
+                    "en": "United States",
+                    "de": "Vereinigte Staaten",
+                    "nl": "Verenigde Staten"
+                  }
+                },
+                {
+                  "id": "ous",
+                  "label": {
+                    "en": "Outside the US",
+                    "de": "Außerhalb der USA",
+                    "nl": "Buiten de VS"
+                  }
+                },
+                {
+                  "id": "jp",
+                  "label": {
+                    "en": "Japan",
+                    "de": "Japan",
+                    "nl": "Japan"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Display",
+            "de": "Anzeige",
+            "nl": "Weergave"
+          },
+          "children": [
+            {
+              "id": "units",
+              "type": "dropdown",
+              "label": {
+                "en": "Glucose unit",
+                "de": "Glukoseeinheit",
+                "nl": "Glucose-eenheid"
+              },
+              "hint": {
+                "en": "Unit for this device's glucose values: device tile, the dashboard widget, and flow cards. Alarm thresholds below convert automatically when you change this (unless you also edit them in the same save).",
+                "de": "Einheit für die Glukosewerte dieses Geräts: Gerätekachel, Dashboard-Widget und Flow-Karten. Die Alarmschwellen unten werden automatisch umgerechnet, wenn Sie dies ändern (es sei denn, Sie bearbeiten sie im selben Speichervorgang ebenfalls).",
+                "nl": "Eenheid voor de glucosewaarden van dit apparaat: apparaattegel, dashboardwidget en flowkaarten. De onderstaande alarmdrempels worden automatisch omgerekend wanneer u dit wijzigt (tenzij u ze in dezelfde opslagactie ook zelf aanpast)."
+              },
+              "value": "mgdl",
+              "values": [
+                {
+                  "id": "mgdl",
+                  "label": {
+                    "en": "mg/dL",
+                    "de": "mg/dL",
+                    "nl": "mg/dL"
+                  }
+                },
+                {
+                  "id": "mmol",
+                  "label": {
+                    "en": "mmol/L",
+                    "de": "mmol/L",
+                    "nl": "mmol/L"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Alarm thresholds",
+            "de": "Alarmschwellen",
+            "nl": "Alarmdrempels"
+          },
+          "children": [
+            {
+              "id": "urgentLowThreshold",
+              "type": "number",
+              "label": {
+                "en": "Urgent Low",
+                "de": "Dringend niedrig",
+                "nl": "Urgent laag"
+              },
+              "hint": {
+                "en": "Glucose at or below this value triggers the urgent-low alarm. Entered in the unit selected above.",
+                "de": "Glukose bei oder unter diesem Wert löst den Alarm „Dringend niedrig“ aus. Wird in der oben gewählten Einheit eingegeben.",
+                "nl": "Glucose op of onder deze waarde activeert het alarm ‘urgent laag’. Wordt ingevoerd in de hierboven gekozen eenheid."
+              },
+              "value": 55,
+              "min": 0,
+              "max": 400,
+              "decimals": 1,
+              "step": 0.1
+            },
+            {
+              "id": "lowThreshold",
+              "type": "number",
+              "label": {
+                "en": "Low",
+                "de": "Niedrig",
+                "nl": "Laag"
+              },
+              "hint": {
+                "en": "Glucose at or below this value (and above Urgent Low) triggers the low alarm. Entered in the unit selected above.",
+                "de": "Glukose bei oder unter diesem Wert (und über „Dringend niedrig“) löst den Alarm „Niedrig“ aus. Wird in der oben gewählten Einheit eingegeben.",
+                "nl": "Glucose op of onder deze waarde (en boven ‘urgent laag’) activeert het alarm ‘laag’. Wordt ingevoerd in de hierboven gekozen eenheid."
+              },
+              "value": 70,
+              "min": 0,
+              "max": 400,
+              "decimals": 1,
+              "step": 0.1
+            },
+            {
+              "id": "highThreshold",
+              "type": "number",
+              "label": {
+                "en": "High",
+                "de": "Hoch",
+                "nl": "Hoog"
+              },
+              "hint": {
+                "en": "Glucose at or above this value triggers the high alarm. Entered in the unit selected above.",
+                "de": "Glukose bei oder über diesem Wert löst den Alarm „Hoch“ aus. Wird in der oben gewählten Einheit eingegeben.",
+                "nl": "Glucose op of boven deze waarde activeert het alarm ‘hoog’. Wordt ingevoerd in de hierboven gekozen eenheid."
+              },
+              "value": 180,
+              "min": 0,
+              "max": 400,
+              "decimals": 1,
+              "step": 0.1
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Data freshness",
+            "de": "Datenaktualität",
+            "nl": "Actualiteit van gegevens"
+          },
+          "children": [
+            {
+              "id": "noDataTimeoutMin",
+              "type": "number",
+              "label": {
+                "en": "No-data timeout (minutes)",
+                "de": "Zeitüberschreitung ohne Daten (Minuten)",
+                "nl": "Time-out zonder gegevens (minuten)"
+              },
+              "hint": {
+                "en": "If no new reading arrives for this many minutes, the No Data alarm triggers. Dexcom sensors normally report roughly every 5 minutes, so a small multiple of that absorbs the occasional missed transmission.",
+                "de": "Wenn innerhalb dieser Anzahl von Minuten kein neuer Messwert eintrifft, löst der Alarm „Keine Daten“ aus. Dexcom-Sensoren melden normalerweise etwa alle 5 Minuten, sodass ein kleines Vielfaches davon gelegentlich ausbleibende Übertragungen abfängt.",
+                "nl": "Als er binnen dit aantal minuten geen nieuwe meting binnenkomt, wordt het alarm ‘geen gegevens’ geactiveerd. Dexcom-sensoren rapporteren normaal ongeveer elke 5 minuten, dus een klein veelvoud daarvan vangt incidentele gemiste overdrachten op."
+              },
+              "value": 20,
+              "min": 10,
+              "max": 120
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "widgets": {
+    "glucose-dashboard": {
+      "name": {
+        "en": "Glucose Dashboard",
+        "de": "Glukose-Dashboard",
+        "nl": "Glucose-dashboard"
+      },
+      "height": 180,
+      "settings": [
+        {
+          "id": "device",
+          "type": "autocomplete",
+          "title": {
+            "en": "User",
+            "de": "Benutzer",
+            "nl": "Gebruiker"
+          }
+        }
+      ],
+      "api": {
+        "getState": {
+          "method": "GET",
+          "path": "/state"
+        }
+      },
+      "id": "glucose-dashboard"
+    }
+  },
+  "capabilities": {
+    "alarm_high": {
+      "type": "boolean",
+      "title": {
+        "en": "High",
+        "de": "Hoch",
+        "nl": "Hoog"
+      },
+      "desc": {
+        "en": "Glucose is at or above the high threshold",
+        "de": "Glukose ist auf oder über der oberen Schwelle",
+        "nl": "Glucose is op of boven de hoge drempel"
+      },
+      "icon": "/assets/capabilities/alarm_high.svg",
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
+    "alarm_low": {
+      "type": "boolean",
+      "title": {
+        "en": "Low",
+        "de": "Niedrig",
+        "nl": "Laag"
+      },
+      "desc": {
+        "en": "Glucose is at or below the low threshold",
+        "de": "Glukose ist auf oder unter der unteren Schwelle",
+        "nl": "Glucose is op of onder de lage drempel"
+      },
+      "icon": "/assets/capabilities/alarm_low.svg",
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
+    "alarm_no_data": {
+      "type": "boolean",
+      "title": {
+        "en": "No Data",
+        "de": "Keine Daten",
+        "nl": "Geen gegevens"
+      },
+      "desc": {
+        "en": "No new glucose reading has arrived within the configured timeout",
+        "de": "Innerhalb des eingestellten Zeitlimits ist kein neuer Glukosewert eingegangen",
+        "nl": "Er is binnen de ingestelde time-out geen nieuwe glucosewaarde binnengekomen"
+      },
+      "icon": "/assets/capabilities/alarm_no_data.svg",
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
+    "alarm_rapid_change": {
+      "type": "boolean",
+      "title": {
+        "en": "Rapid Change",
+        "de": "Schnelle Änderung",
+        "nl": "Snelle verandering"
+      },
+      "desc": {
+        "en": "Glucose is rising or falling quickly (double-arrow trend)",
+        "de": "Glukose steigt oder fällt schnell (Doppelpfeil-Trend)",
+        "nl": "Glucose stijgt of daalt snel (dubbele-pijltrend)"
+      },
+      "icon": "/assets/capabilities/alarm_rapid_change.svg",
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
+    "alarm_urgent_low": {
+      "type": "boolean",
+      "title": {
+        "en": "Urgent Low",
+        "de": "Dringend niedrig",
+        "nl": "Urgent laag"
+      },
+      "desc": {
+        "en": "Glucose is at or below the urgent-low threshold",
+        "de": "Glukose ist auf oder unter der Schwelle „Dringend niedrig“",
+        "nl": "Glucose is op of onder de drempel ‘urgent laag’"
+      },
+      "icon": "/assets/capabilities/alarm_urgent_low.svg",
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
+    "glucose_data_age": {
+      "type": "number",
+      "title": {
+        "en": "Data Age",
+        "de": "Datenalter",
+        "nl": "Gegevensleeftijd"
+      },
+      "desc": {
+        "en": "Minutes since the last glucose reading was received",
+        "de": "Minuten seit Empfang des letzten Glukosewerts",
+        "nl": "Minuten sinds de laatste glucosewaarde is ontvangen"
+      },
+      "units": {
+        "en": "min",
+        "de": "min",
+        "nl": "min"
+      },
+      "icon": "/assets/capabilities/glucose_data_age.svg",
+      "decimals": 0,
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor"
+    },
+    "glucose_trend": {
+      "type": "enum",
+      "title": {
+        "en": "Trend",
+        "de": "Trend",
+        "nl": "Trend"
+      },
+      "desc": {
+        "en": "Dexcom glucose trend direction",
+        "de": "Dexcom-Glukose-Trendrichtung",
+        "nl": "Dexcom glucose-trendrichting"
+      },
+      "icon": "/assets/capabilities/glucose_trend.svg",
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "values": [
+        {
+          "id": "None",
+          "title": {
+            "en": "Unavailable",
+            "de": "Nicht verfügbar",
+            "nl": "Niet beschikbaar"
+          }
+        },
+        {
+          "id": "DoubleUp",
+          "title": {
+            "en": "Rising quickly ↑︎↑︎",
+            "de": "Steigt schnell ↑︎↑︎",
+            "nl": "Stijgt snel ↑︎↑︎"
+          }
+        },
+        {
+          "id": "SingleUp",
+          "title": {
+            "en": "Rising ↑︎",
+            "de": "Steigt ↑︎",
+            "nl": "Stijgt ↑︎"
+          }
+        },
+        {
+          "id": "FortyFiveUp",
+          "title": {
+            "en": "Rising slightly ↗︎",
+            "de": "Steigt leicht ↗︎",
+            "nl": "Stijgt licht ↗︎"
+          }
+        },
+        {
+          "id": "Flat",
+          "title": {
+            "en": "Steady →︎",
+            "de": "Stabil →︎",
+            "nl": "Stabiel →︎"
+          }
+        },
+        {
+          "id": "FortyFiveDown",
+          "title": {
+            "en": "Falling slightly ↘︎",
+            "de": "Fällt leicht ↘︎",
+            "nl": "Daalt licht ↘︎"
+          }
+        },
+        {
+          "id": "SingleDown",
+          "title": {
+            "en": "Falling ↓︎",
+            "de": "Fällt ↓︎",
+            "nl": "Daalt ↓︎"
+          }
+        },
+        {
+          "id": "DoubleDown",
+          "title": {
+            "en": "Falling quickly ↓︎↓︎",
+            "de": "Fällt schnell ↓︎↓︎",
+            "nl": "Daalt snel ↓︎↓︎"
+          }
+        },
+        {
+          "id": "NotComputable",
+          "title": {
+            "en": "Unable to determine trend",
+            "de": "Trend kann nicht bestimmt werden",
+            "nl": "Trend kan niet worden bepaald"
+          }
+        },
+        {
+          "id": "RateOutOfRange",
+          "title": {
+            "en": "Trend unavailable",
+            "de": "Trend nicht verfügbar",
+            "nl": "Trend niet beschikbaar"
+          }
+        }
+      ]
+    },
+    "measure_glucose": {
+      "type": "number",
+      "title": {
+        "en": "Glucose",
+        "de": "Glukose",
+        "nl": "Glucose"
+      },
+      "desc": {
+        "en": "Current CGM glucose value",
+        "de": "Aktueller CGM-Glukosewert",
+        "nl": "Huidige CGM-glucosewaarde"
+      },
+      "units": {
+        "en": "mg/dL",
+        "de": "mg/dL",
+        "nl": "mg/dL"
+      },
+      "icon": "/assets/capabilities/measure_glucose.svg",
+      "decimals": 0,
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor"
+    }
+  }
+}

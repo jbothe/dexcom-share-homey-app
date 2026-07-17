@@ -1,0 +1,15 @@
+{
+  "type": "number",
+  "title": { "en": "Glucose", "de": "Glukose", "nl": "Glucose" },
+  "desc": {
+    "en": "Current CGM glucose value",
+    "de": "Aktueller CGM-Glukosewert",
+    "nl": "Huidige CGM-glucosewaarde"
+  },
+  "units": { "en": "mg/dL", "de": "mg/dL", "nl": "mg/dL" },
+  "icon": "/assets/capabilities/measure_glucose.svg",
+  "decimals": 0,
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor"
+}

@@ -1,0 +1,31 @@
+{
+  "pair": {
+    "login": {
+      "title": "Dexcom-gebruiker verbinden",
+      "instructions": "Gebruik het Dexcom-account van de <strong>persoon die de sensor draagt</strong> — dezelfde inloggegevens die in de G6/G7-app worden gebruikt, met Share ingeschakeld. Een apart Dexcom Follow-account werkt niet: het inloggen lukt wel, maar er komen geen glucosegegevens binnen.",
+      "usernameLabel": "Gebruikersnaam, e-mail of telefoonnummer",
+      "passwordLabel": "Wachtwoord",
+      "regionLabel": "Regio",
+      "regionUs": "Verenigde Staten",
+      "regionOus": "Buiten de VS",
+      "regionJp": "Japan",
+      "continue": "Doorgaan",
+      "connecting": "Verbinden…",
+      "genericError": "Inloggen bij Dexcom Share is niet gelukt."
+    }
+  },
+  "widget": {
+    "glucoseDashboard": {
+      "urgentLow": "Urgent laag",
+      "low": "Laag",
+      "high": "Hoog",
+      "noData": "Geen gegevens",
+      "noDataAgo": "Geen gegevens",
+      "justNow": "Zojuist",
+      "minutesAgo": "{{minutes}} min geleden",
+      "hoursAgo": "{{hours}} u geleden",
+      "hoursMinutesAgo": "{{hours}} u {{minutes}} min geleden",
+      "pickUser": "Kies een gebruiker in de widgetinstellingen"
+    }
+  }
+}

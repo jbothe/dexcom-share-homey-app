@@ -1,0 +1,14 @@
+{
+  "type": "boolean",
+  "title": { "en": "High", "de": "Hoch", "nl": "Hoog" },
+  "desc": {
+    "en": "Glucose is at or above the high threshold",
+    "de": "Glukose ist auf oder über der oberen Schwelle",
+    "nl": "Glucose is op of boven de hoge drempel"
+  },
+  "icon": "/assets/capabilities/alarm_high.svg",
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true
+}

@@ -1,0 +1,35 @@
+{
+  "name": { "en": "Dexcom User", "de": "Dexcom User", "nl": "Dexcom User" },
+  "class": "sensor",
+  "capabilities": [
+    "measure_glucose",
+    "glucose_trend",
+    "glucose_data_age",
+    "alarm_urgent_low",
+    "alarm_low",
+    "alarm_high",
+    "alarm_rapid_change",
+    "alarm_no_data"
+  ],
+  "platforms": ["local", "cloud"],
+  "connectivity": ["cloud"],
+  "images": {
+    "small": "/drivers/follower/assets/images/small.png",
+    "large": "/drivers/follower/assets/images/large.png",
+    "xlarge": "/drivers/follower/assets/images/xlarge.png"
+  },
+  "pair": [
+    {
+      "id": "login"
+    },
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": { "next": "add_devices" }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ]
+}

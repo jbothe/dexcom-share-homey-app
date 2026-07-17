@@ -1,0 +1,29 @@
+{
+  "title": {
+    "en": "Glucose is !{{above|not above}}",
+    "de": "Glukose ist !{{über|nicht über}}",
+    "nl": "Glucose is !{{boven|niet boven}}"
+  },
+  "titleFormatted": {
+    "en": "Glucose is !{{above|not above}} [[value]]",
+    "de": "Glukose ist !{{über|nicht über}} [[value]]",
+    "nl": "Glucose is !{{boven|niet boven}} [[value]]"
+  },
+  "args": [
+    { "type": "device", "name": "device", "filter": "driver_id=follower" },
+    {
+      "type": "number",
+      "name": "value",
+      "title": { "en": "Value", "de": "Wert", "nl": "Waarde" },
+      "placeholder": {
+        "en": "In the unit selected in this device's settings",
+        "de": "In der in den Geräteeinstellungen gewählten Einheit",
+        "nl": "In de eenheid die in de apparaatinstellingen is gekozen"
+      },
+      "min": 0,
+      "max": 400,
+      "step": 0.1,
+      "value": 180
+    }
+  ]
+}

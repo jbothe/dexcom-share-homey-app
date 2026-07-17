@@ -1,0 +1,15 @@
+{
+  "title": {
+    "en": "Glucose changed",
+    "de": "Glukose geändert",
+    "nl": "Glucose gewijzigd"
+  },
+  "tokens": [
+    { "name": "glucose", "type": "number", "title": { "en": "Glucose", "de": "Glukose", "nl": "Glucose" } },
+    { "name": "mmol", "type": "number", "title": { "en": "Glucose (mmol/L)", "de": "Glukose (mmol/L)", "nl": "Glucose (mmol/L)" } },
+    { "name": "trend", "type": "string", "title": { "en": "Trend", "de": "Trend", "nl": "Trend" } }
+  ],
+  "args": [
+    { "type": "device", "name": "device", "filter": "driver_id=follower" }
+  ]
+}

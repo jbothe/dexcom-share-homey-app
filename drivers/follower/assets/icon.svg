@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Dexcom dot mark: four large dots on a rhombus, two small outer dots at 2/3 radius.
+       Black per Homey's icon convention (Homey tints it) - the green is brandColor. -->
+  <g fill="#000000">
+    <circle cx="50" cy="24.82" r="8.46"/>
+    <circle cx="30.42" cy="50" r="8.46"/>
+    <circle cx="69.58" cy="50" r="8.46"/>
+    <circle cx="50" cy="75.18" r="8.46"/>
+    <circle cx="13.64" cy="77.95" r="5.64"/>
+    <circle cx="86.36" cy="77.95" r="5.64"/>
+  </g>
+</svg>

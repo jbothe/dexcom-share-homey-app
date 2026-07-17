@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /*
+      Styled with Homey's own design tokens (var(--homey-*)) rather than hardcoded colors, the
+      same approach widgets/glucose-dashboard/public/index.html uses - see that file's own
+      comment for why (matches the real Homey brand palette and the user's actual in-app theme
+      instead of a locally-guessed one). Unlike the widget, it is NOT confirmed that Homey
+      injects this variable set into *pair* views the same way it does for widgets/settings (see
+      CLAUDE.md's "Not yet verified") - every var() call below therefore carries an explicit
+      static fallback (Homey's documented light-mode hex, same values as test/homey-mock.css)
+      so the screen still looks Homey-authentic even if nothing is actually injected here.
+      Deliberately no prefers-color-scheme override of these same variable names: if Homey DOES
+      inject the real (possibly dark) value, a same-specificity local override could win the
+      cascade and clobber it based on the OS theme rather than the user's actual in-app Homey
+      theme, which the widget file's own comment already flags as the wrong signal to key off.
+    */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
+      color: var(--homey-text-color, #1c1c1c);
+      background: var(--homey-background-color, #ffffff);
+    }
+    .page { display: flex; flex-direction: column; min-height: 100%; }
+    .content { flex: 1 1 auto; padding: 20px 20px 8px; }
+
+    h2 {
+      font-size: var(--homey-font-size-large, 20px);
+      font-weight: var(--homey-font-weight-medium, 500);
+      line-height: var(--homey-line-height-large, 28px);
+      margin: 0 0 8px;
+    }
+    p {
+      font-size: var(--homey-font-size-small, 14px);
+      line-height: 1.5;
+      color: var(--homey-text-color-light, #7a7a7f);
+      margin: 0;
+    }
+
+    label {
+      display: block;
+      font-size: var(--homey-font-size-small, 13px);
+      font-weight: var(--homey-font-weight-medium, 500);
+      color: var(--homey-text-color-light, #7a7a7f);
+      margin: 18px 0 6px;
+    }
+    input, select {
+      width: 100%;
+      font-size: var(--homey-font-size-default, 16px);
+      padding: 11px 12px;
+      border: 1px solid var(--homey-color-mono-200, #c8c8d0);
+      border-radius: var(--homey-border-radius-default, 8px);
+      color: var(--homey-text-color, #1c1c1c);
+      background: var(--homey-color-mono-000, #ffffff);
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--homey-color-blue-500, #0082fa);
+      box-shadow: 0 0 0 3px var(--homey-color-blue-100, #cce6fe);
+    }
+
+    /* Fixed action bar at the bottom of the screen, same placement as Homey's own default
+       pairing chrome "Next" button (see driver.ts's comment on why this step uses its own
+       button instead of that one) - margin-top: auto pins it to the bottom when content is
+       short, and lets it sit right after the content (still full-width, still blue) if the
+       screen content ever grows tall enough to need scrolling. */
+    .footer {
+      margin-top: auto;
+      padding: 16px 20px;
+      border-top: 1px solid var(--homey-color-mono-100, #dadae2);
+    }
+    button {
+      width: 100%;
+      font-size: var(--homey-font-size-default, 16px);
+      font-weight: var(--homey-font-weight-medium, 500);
+      padding: 13px 14px;
+      border: none;
+      border-radius: var(--homey-border-radius-default, 8px);
+      background: var(--homey-color-blue-500, #0082fa);
+      color: #ffffff;
+      cursor: pointer;
+    }
+    button:hover { background: var(--homey-color-blue-600, #0068c8); }
+    button:disabled { background: var(--homey-color-mono-300, #b1b1b9); cursor: default; }
+
+    .error {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border-radius: var(--homey-border-radius-default, 8px);
+      background: var(--homey-color-red-050, #fce9e9);
+      color: var(--homey-text-color-danger, #d81c1d);
+      font-size: var(--homey-font-size-small, 13px);
+      line-height: 1.4;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <form id="loginForm" class="page">
+    <div class="content">
+      <h2 id="titleText"></h2>
+      <p id="instructionsText"></p>
+
+      <label id="usernameLabel" for="username"></label>
+      <input id="username" type="text" autocomplete="username" required />
+
+      <label id="passwordLabel" for="password"></label>
+      <input id="password" type="password" autocomplete="current-password" required />
+
+      <label id="regionLabel" for="region"></label>
+      <select id="region">
+        <option id="regionUs" value="us"></option>
+        <option id="regionOus" value="ous"></option>
+        <option id="regionJp" value="jp"></option>
+      </select>
+
+      <div id="error" class="error"></div>
+    </div>
+
+    <div class="footer">
+      <button id="submitButton" type="submit"></button>
+    </div>
+  </form>
+
+  <script type="application/javascript">
+    var form = document.getElementById('loginForm');
+    var button = document.getElementById('submitButton');
+    var errorEl = document.getElementById('error');
+
+    // Diagnostics for pairing issues: this view's own console (Homey app run's pairing
+    // window devtools, or the mobile app's remote debugger) is the only visibility into what
+    // actually happened client-side during a failed pair - the driver-side log (see driver.ts)
+    // only sees what the client actually emitted, not what button the user pressed.
+    function diag(msg, extra) {
+      // eslint-disable-next-line no-console
+      console.log('[dexcom-pair:login] ' + msg, extra !== undefined ? extra : '');
+    }
+
+    diag('view loaded');
+
+    // Homey injects Homey.__() (backed by the app's own /locales/<lang>.json files) directly
+    // into pair views, available synchronously - same as this file's existing direct use of
+    // Homey.emit()/Homey.showView() below, no onHomeyReady-style callback needed here.
+    var t = {
+      title: Homey.__('pair.login.title'),
+      instructions: Homey.__('pair.login.instructions'),
+      usernameLabel: Homey.__('pair.login.usernameLabel'),
+      passwordLabel: Homey.__('pair.login.passwordLabel'),
+      regionLabel: Homey.__('pair.login.regionLabel'),
+      regionUs: Homey.__('pair.login.regionUs'),
+      regionOus: Homey.__('pair.login.regionOus'),
+      regionJp: Homey.__('pair.login.regionJp'),
+      continueLabel: Homey.__('pair.login.continue'),
+      connecting: Homey.__('pair.login.connecting'),
+      genericError: Homey.__('pair.login.genericError'),
+    };
+    document.getElementById('titleText').textContent = t.title;
+    // innerHTML, not textContent: the translated string carries a <strong> tag around the
+    // "person wearing the sensor" phrase (static, non-user-controlled), same as the source copy.
+    document.getElementById('instructionsText').innerHTML = t.instructions;
+    document.getElementById('usernameLabel').textContent = t.usernameLabel;
+    document.getElementById('passwordLabel').textContent = t.passwordLabel;
+    document.getElementById('regionLabel').textContent = t.regionLabel;
+    document.getElementById('regionUs').textContent = t.regionUs;
+    document.getElementById('regionOus').textContent = t.regionOus;
+    document.getElementById('regionJp').textContent = t.regionJp;
+    button.textContent = t.continueLabel;
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      errorEl.style.display = 'none';
+      button.disabled = true;
+      button.textContent = t.connecting;
+
+      var payload = {
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value,
+        region: document.getElementById('region').value,
+      };
+
+      diag('submit -> emitting login', { username: payload.username, region: payload.region });
+
+      Homey.emit('login', payload).then(function () {
+        diag('login accepted, advancing to list_devices');
+        // Explicit view id, not Homey.nextView() - this step deliberately declares no
+        // "navigation" in driver.compose.json (see that file's comment) so Homey doesn't also
+        // render its own default chrome Continue button alongside this form's one, which
+        // could otherwise be tapped to skip straight to list_devices without ever calling
+        // the login handler above (surfaces there as "Please sign in first."). nextView()
+        // depends on that declared navigation to know where to go, so it's not usable here -
+        // showView() targets a view id directly regardless of any navigation config.
+        Homey.showView('list_devices');
+      }).catch(function (err) {
+        diag('login rejected', (err && err.message) || err);
+        button.disabled = false;
+        button.textContent = t.continueLabel;
+        errorEl.textContent = (err && err.message) || t.genericError;
+        errorEl.style.display = 'block';
+      });
+    });
+  </script>
+</body>
+</html>

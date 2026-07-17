@@ -1,0 +1,14 @@
+{
+  "type": "boolean",
+  "title": { "en": "Urgent Low", "de": "Dringend niedrig", "nl": "Urgent laag" },
+  "desc": {
+    "en": "Glucose is at or below the urgent-low threshold",
+    "de": "Glukose ist auf oder unter der Schwelle „Dringend niedrig“",
+    "nl": "Glucose is op of onder de drempel ‘urgent laag’"
+  },
+  "icon": "/assets/capabilities/alarm_urgent_low.svg",
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true
+}

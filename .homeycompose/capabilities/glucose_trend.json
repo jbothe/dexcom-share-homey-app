@@ -1,0 +1,25 @@
+{
+  "type": "enum",
+  "title": { "en": "Trend", "de": "Trend", "nl": "Trend" },
+  "desc": {
+    "en": "Dexcom glucose trend direction",
+    "de": "Dexcom-Glukose-Trendrichtung",
+    "nl": "Dexcom glucose-trendrichting"
+  },
+  "icon": "/assets/capabilities/glucose_trend.svg",
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "values": [
+    { "id": "None", "title": { "en": "Unavailable", "de": "Nicht verfügbar", "nl": "Niet beschikbaar" } },
+    { "id": "DoubleUp", "title": { "en": "Rising quickly ↑︎↑︎", "de": "Steigt schnell ↑︎↑︎", "nl": "Stijgt snel ↑︎↑︎" } },
+    { "id": "SingleUp", "title": { "en": "Rising ↑︎", "de": "Steigt ↑︎", "nl": "Stijgt ↑︎" } },
+    { "id": "FortyFiveUp", "title": { "en": "Rising slightly ↗︎", "de": "Steigt leicht ↗︎", "nl": "Stijgt licht ↗︎" } },
+    { "id": "Flat", "title": { "en": "Steady →︎", "de": "Stabil →︎", "nl": "Stabiel →︎" } },
+    { "id": "FortyFiveDown", "title": { "en": "Falling slightly ↘︎", "de": "Fällt leicht ↘︎", "nl": "Daalt licht ↘︎" } },
+    { "id": "SingleDown", "title": { "en": "Falling ↓︎", "de": "Fällt ↓︎", "nl": "Daalt ↓︎" } },
+    { "id": "DoubleDown", "title": { "en": "Falling quickly ↓︎↓︎", "de": "Fällt schnell ↓︎↓︎", "nl": "Daalt snel ↓︎↓︎" } },
+    { "id": "NotComputable", "title": { "en": "Unable to determine trend", "de": "Trend kann nicht bestimmt werden", "nl": "Trend kan niet worden bepaald" } },
+    { "id": "RateOutOfRange", "title": { "en": "Trend unavailable", "de": "Trend nicht verfügbar", "nl": "Trend niet beschikbaar" } }
+  ]
+}

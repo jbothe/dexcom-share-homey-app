@@ -1,0 +1,31 @@
+{
+  "title": {
+    "en": "Trend !{{is|is not}}",
+    "de": "Trend !{{ist|ist nicht}}",
+    "nl": "Trend !{{is|is niet}}"
+  },
+  "titleFormatted": {
+    "en": "Trend !{{is|is not}} [[direction]]",
+    "de": "Trend !{{ist|ist nicht}} [[direction]]",
+    "nl": "Trend !{{is|is niet}} [[direction]]"
+  },
+  "args": [
+    { "type": "device", "name": "device", "filter": "driver_id=follower" },
+    {
+      "type": "dropdown",
+      "name": "direction",
+      "values": [
+        { "id": "None", "label": { "en": "Unavailable", "de": "Nicht verfügbar", "nl": "Niet beschikbaar" } },
+        { "id": "DoubleUp", "label": { "en": "Rising quickly ↑︎↑︎", "de": "Steigt schnell ↑︎↑︎", "nl": "Stijgt snel ↑︎↑︎" } },
+        { "id": "SingleUp", "label": { "en": "Rising ↑︎", "de": "Steigt ↑︎", "nl": "Stijgt ↑︎" } },
+        { "id": "FortyFiveUp", "label": { "en": "Rising slightly ↗︎", "de": "Steigt leicht ↗︎", "nl": "Stijgt licht ↗︎" } },
+        { "id": "Flat", "label": { "en": "Steady →︎", "de": "Stabil →︎", "nl": "Stabiel →︎" } },
+        { "id": "FortyFiveDown", "label": { "en": "Falling slightly ↘︎", "de": "Fällt leicht ↘︎", "nl": "Daalt licht ↘︎" } },
+        { "id": "SingleDown", "label": { "en": "Falling ↓︎", "de": "Fällt ↓︎", "nl": "Daalt ↓︎" } },
+        { "id": "DoubleDown", "label": { "en": "Falling quickly ↓︎↓︎", "de": "Fällt schnell ↓︎↓︎", "nl": "Daalt snel ↓︎↓︎" } },
+        { "id": "NotComputable", "label": { "en": "Unable to determine trend", "de": "Trend kann nicht bestimmt werden", "nl": "Trend kan niet worden bepaald" } },
+        { "id": "RateOutOfRange", "label": { "en": "Trend unavailable", "de": "Trend nicht verfügbar", "nl": "Trend niet beschikbaar" } }
+      ]
+    }
+  ]
+}

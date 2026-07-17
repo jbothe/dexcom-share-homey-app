@@ -1,0 +1,14 @@
+{
+  "title": {
+    "en": "Glucose became low",
+    "de": "Glukose wurde niedrig",
+    "nl": "Glucose werd laag"
+  },
+  "tokens": [
+    { "name": "glucose", "type": "number", "title": { "en": "Glucose", "de": "Glukose", "nl": "Glucose" } },
+    { "name": "mmol", "type": "number", "title": { "en": "Glucose (mmol/L)", "de": "Glukose (mmol/L)", "nl": "Glucose (mmol/L)" } }
+  ],
+  "args": [
+    { "type": "device", "name": "device", "filter": "driver_id=follower" }
+  ]
+}

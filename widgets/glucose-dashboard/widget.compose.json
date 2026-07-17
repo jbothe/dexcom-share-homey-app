@@ -1,0 +1,17 @@
+{
+  "name": { "en": "Glucose Dashboard", "de": "Glukose-Dashboard", "nl": "Glucose-dashboard" },
+  "height": 180,
+  "settings": [
+    {
+      "id": "device",
+      "type": "autocomplete",
+      "title": { "en": "User", "de": "Benutzer", "nl": "Gebruiker" }
+    }
+  ],
+  "api": {
+    "getState": {
+      "method": "GET",
+      "path": "/state"
+    }
+  }
+}

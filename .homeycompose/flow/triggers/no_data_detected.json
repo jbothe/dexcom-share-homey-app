@@ -1,0 +1,21 @@
+{
+  "title": {
+    "en": "No new glucose data",
+    "de": "Keine neuen Glukosedaten",
+    "nl": "Geen nieuwe glucosegegevens"
+  },
+  "tokens": [
+    {
+      "name": "minutes",
+      "type": "number",
+      "title": {
+        "en": "Minutes since last reading",
+        "de": "Minuten seit letztem Messwert",
+        "nl": "Minuten sinds laatste meting"
+      }
+    }
+  ],
+  "args": [
+    { "type": "device", "name": "device", "filter": "driver_id=follower" }
+  ]
+}

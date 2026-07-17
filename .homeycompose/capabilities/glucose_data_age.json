@@ -1,0 +1,15 @@
+{
+  "type": "number",
+  "title": { "en": "Data Age", "de": "Datenalter", "nl": "Gegevensleeftijd" },
+  "desc": {
+    "en": "Minutes since the last glucose reading was received",
+    "de": "Minuten seit Empfang des letzten Glukosewerts",
+    "nl": "Minuten sinds de laatste glucosewaarde is ontvangen"
+  },
+  "units": { "en": "min", "de": "min", "nl": "min" },
+  "icon": "/assets/capabilities/glucose_data_age.svg",
+  "decimals": 0,
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor"
+}

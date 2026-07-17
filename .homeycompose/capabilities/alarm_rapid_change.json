@@ -1,0 +1,14 @@
+{
+  "type": "boolean",
+  "title": { "en": "Rapid Change", "de": "Schnelle Änderung", "nl": "Snelle verandering" },
+  "desc": {
+    "en": "Glucose is rising or falling quickly (double-arrow trend)",
+    "de": "Glukose steigt oder fällt schnell (Doppelpfeil-Trend)",
+    "nl": "Glucose stijgt of daalt snel (dubbele-pijltrend)"
+  },
+  "icon": "/assets/capabilities/alarm_rapid_change.svg",
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true
+}

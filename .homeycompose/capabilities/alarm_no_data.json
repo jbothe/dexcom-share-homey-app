@@ -1,0 +1,14 @@
+{
+  "type": "boolean",
+  "title": { "en": "No Data", "de": "Keine Daten", "nl": "Geen gegevens" },
+  "desc": {
+    "en": "No new glucose reading has arrived within the configured timeout",
+    "de": "Innerhalb des eingestellten Zeitlimits ist kein neuer Glukosewert eingegangen",
+    "nl": "Er is binnen de ingestelde time-out geen nieuwe glucosewaarde binnengekomen"
+  },
+  "icon": "/assets/capabilities/alarm_no_data.svg",
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true
+}

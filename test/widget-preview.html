@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Glucose Dashboard widget preview</title>
+  <style>
+    /* Harness chrome only - never touches the widget itself, which renders inside the iframe
+       below exactly as shipped (widgets/glucose-dashboard/public/index.html, unmodified). */
+    :root {
+      --bg: #f2f3f7;
+      --surface: #ffffff;
+      --border: #e2e4ea;
+      --text: #1a1d29;
+      --text-muted: #676c7e;
+      --accent: #4f46e5;
+      --accent-text: #ffffff;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 2px rgba(16, 18, 27, 0.04), 0 8px 24px rgba(16, 18, 27, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 18px 20px 60px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .page { max-width: 640px; margin: 0 auto; }
+
+    header { margin-bottom: 24px; }
+    h1 { font-size: 18px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+    header p { font-size: 13px; line-height: 1.5; color: var(--text-muted); margin: 0; }
+
+    section { margin-bottom: 28px; }
+    section > h2 {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-muted); margin: 0 0 10px;
+    }
+
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    button {
+      font: inherit; font-size: 13px; font-weight: 600; color: var(--text);
+      padding: 8px 14px; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: 0 1px 2px rgba(16, 18, 27, 0.03);
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+    }
+    button:hover { border-color: #c8cbd6; background: #fafafe; }
+    button:active { transform: translateY(1px); }
+    button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: #eeecfd; }
+
+    button.primary {
+      background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+    }
+    button.primary:hover { background: #4338ca; border-color: #4338ca; }
+
+    .controls-card {
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 20px;
+    }
+    .controls-card .divider { width: 1px; align-self: stretch; background: var(--border); }
+
+    .preview-card {
+      display: flex; justify-content: center;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 24px;
+    }
+    .frame-wrap { display: inline-block; border: 1px solid #ccc; background: #ffffff; border-radius: 10px; overflow: hidden; }
+    @media (prefers-color-scheme: dark) {
+      .frame-wrap { background: #0b0d12; border-color: #333; }
+    }
+    html[data-theme='light'] .frame-wrap { background: #ffffff; border-color: #ccc; }
+    html[data-theme='dark'] .frame-wrap { background: #0b0d12; border-color: #333; }
+    iframe { display: block; width: 380px; height: 240px; border: 0; }
+
+    textarea {
+      width: 100%; height: 260px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
+      line-height: 1.5; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px;
+      resize: vertical; box-shadow: var(--shadow);
+    }
+    .apply-row { margin-top: 10px; display: flex; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Glucose Dashboard widget preview</h1>
+      <p>Dev-only preview tool, not shipped with the app. Loads the real, unmodified widget file in an iframe.</p>
+    </header>
+
+    <div class="controls-card">
+      <div class="row">
+        <button class="theme-btn" data-theme="light">Light</button>
+        <button class="theme-btn" data-theme="dark">Dark</button>
+        <button class="theme-btn" data-theme="">Auto (OS)</button>
+      </div>
+      <div class="divider"></div>
+      <button id="toggleStale">Toggle stale</button>
+    </div>
+
+    <section>
+      <div class="preview-card">
+        <div class="frame-wrap">
+          <iframe id="widget" src="../widgets/glucose-dashboard/public/index.html"></iframe>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Shortcuts</h2>
+      <div class="row">
+        <button data-preset="normal">Normal</button>
+        <button data-preset="urgentLow">Urgent low</button>
+        <button data-preset="low">Low</button>
+        <button data-preset="high">High</button>
+        <button data-preset="noData">No data</button>
+        <button data-preset="mmol">mmol/L units</button>
+        <button data-preset="rapidFalling">Rapid falling trend</button>
+        <button data-preset="empty">Before first broadcast</button>
+      </div>
+    </section>
+
+    <section>
+      <textarea id="customState">{}</textarea>
+      <div class="apply-row"><button id="applyCustom" class="primary">Apply state</button></div>
+    </section>
+  </div>
+
+  <script>
+    // Builds a ~3h history of 5-minute readings around a base mg/dL value with mild noise.
+    function history(baseMgDl, count) {
+      count = count || 36;
+      var now = Date.now();
+      var points = [];
+      for (var i = count - 1; i >= 0; i--) {
+        var wobble = Math.sin(i / 3) * 12 + (Math.random() - 0.5) * 6;
+        points.push({ t: now - i * 5 * 60000, v: Math.round(baseMgDl + wobble) });
+      }
+      return points;
+    }
+
+    // One widget instance is always bound to exactly one device (see index.html's own
+    // top-of-file comment) - so unlike an earlier revision of this harness, a "preset" is a
+    // single flat payload (the shape app.ts's broadcastDeviceState sends on one device's own
+    // 'glucose:<id>' channel), not a {units, devices: [...]} list to pick from.
+    function device(units, id, name, mgDl, alarms, extra) {
+      extra = extra || {};
+      var trendDirection = extra.trendDirection || 'Flat';
+      var updatedAt = 'updatedAt' in extra ? extra.updatedAt : Date.now() - 2 * 60000;
+      return Object.assign({
+        units: units,
+        id: id,
+        name: name,
+        mgDl: mgDl,
+        mmolL: Math.round(mgDl * 0.0555 * 10) / 10,
+        trendDirection: trendDirection,
+        trendDescription: trendDirection,
+        updatedAt: updatedAt,
+        history: history(mgDl),
+        alarms: Object.assign({
+          urgentLow: false, low: false, high: false, rapidChange: false, noData: false,
+        }, alarms || {}),
+        urgentLowMgDl: 55,
+        lowMgDl: 70,
+        highMgDl: 180,
+      }, extra.overrides || {});
+    }
+
+    var PRESETS = {
+      normal: device('mgdl', 'a', 'Jake', 118, {}),
+      urgentLow: device('mgdl', 'a', 'Jake', 48, { urgentLow: true }, { trendDirection: 'SingleDown' }),
+      low: device('mgdl', 'a', 'Jake', 64, { low: true }, { trendDirection: 'FortyFiveDown' }),
+      high: device('mgdl', 'a', 'Jake', 232, { high: true }, { trendDirection: 'SingleUp' }),
+      noData: device('mgdl', 'a', 'Jake', 118, { noData: true }, { updatedAt: Date.now() - 45 * 60000 }),
+      mmol: device('mmol', 'a', 'Jake', 118, {}),
+      rapidFalling: device('mgdl', 'a', 'Jake', 90, { low: true, rapidChange: true }, { trendDirection: 'DoubleDown' }),
+      empty: null,
+    };
+
+    var iframe = document.getElementById('widget');
+    var mockCssHref = 'homey-mock.css';
+    var currentTheme = '';
+
+    function injectMockCss() {
+      var doc = iframe.contentDocument;
+      if (!doc || doc.getElementById('homey-mock-css')) return;
+      var link = doc.createElement('link');
+      link.id = 'homey-mock-css';
+      link.rel = 'stylesheet';
+      link.href = new URL(mockCssHref, window.location.href).href;
+      doc.head.appendChild(link);
+    }
+
+    function applyTheme(theme) {
+      currentTheme = theme;
+      if (theme) document.documentElement.setAttribute('data-theme', theme);
+      else document.documentElement.removeAttribute('data-theme');
+      var doc = iframe.contentDocument;
+      if (doc) {
+        if (theme) doc.documentElement.setAttribute('data-theme', theme);
+        else doc.documentElement.removeAttribute('data-theme');
+      }
+      document.querySelectorAll('.theme-btn').forEach(function (btn) {
+        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-theme') === theme));
+      });
+    }
+
+    iframe.addEventListener('load', function () {
+      injectMockCss();
+      applyTheme(currentTheme);
+    });
+
+    document.querySelectorAll('.theme-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { applyTheme(btn.getAttribute('data-theme')); });
+    });
+    applyTheme('');
+
+    function applyState(state) {
+      var win = iframe.contentWindow;
+      if (win && typeof win.render === 'function') {
+        win.render(state);
+      }
+    }
+
+    document.querySelectorAll('button[data-preset]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var preset = PRESETS[btn.getAttribute('data-preset')];
+        document.getElementById('customState').value = JSON.stringify(preset, null, 2);
+      });
+    });
+
+    document.getElementById('applyCustom').addEventListener('click', function () {
+      try {
+        applyState(JSON.parse(document.getElementById('customState').value));
+      } catch (e) {
+        alert('Invalid JSON: ' + e.message);
+      }
+    });
+
+    document.getElementById('toggleStale').addEventListener('click', function () {
+      var doc = iframe.contentDocument;
+      var card = doc && doc.getElementById('card');
+      if (card) card.classList.toggle('stale');
+    });
+  </script>
+</body>
+</html>
