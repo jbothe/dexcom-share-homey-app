@@ -209,6 +209,36 @@ skip this conversion and compare the raw stored number directly against a canoni
 a real bug, silently misclassifying severity whenever mmol/L was the active unit; fixed alongside
 this move, regression-tested in `test/dexcom-poller.test.ts`.)
 
+**`measure_glucose` is stored in the device's *display* unit, not canonical mg/dL** — the poller
+writes `toDisplay(mgDl, units)` (`DexcomPoller.ts`), and `device.ts`'s `refreshCapabilityOptions()`
+fixes the tile's own unit label + decimals per-device via `setCapabilityOptions`
+(`unitLabel`/`unitDecimals`). This is the one capability that isn't canonical — everything the alarm
+logic touches stays mg/dL, but the user-facing *value* capability holds e.g. `8.5` for an mmol
+device. **Its static manifest deliberately declares no `units` and `decimals: 1`** (not `mg/dL`/`0`).
+The reason is Homey's **auto-generated** numeric flow cards ("Glucose becomes greater/less than
+[value]", and the matching auto condition): those cards are not in `.homeycompose/flow/` at all —
+Homey synthesises them from the numeric capability — and they read the capability's **static**
+manifest `units`/`decimals`, **ignoring the per-device `setCapabilityOptions` override**
+(confirmed Homey behaviour: [athombv/homey-apps-sdk-issues#372](https://github.com/athombv/homey-apps-sdk-issues/issues/372)).
+Because the stored value is already in the display unit, that auto-card's *comparison* is in fact
+unit-correct (an mmol user entering `10` compares against the stored mmol value) — but with a static
+`units: mg/dL` it was **mislabeled "mg/dL"** for every mmol device and locked to whole numbers. There
+is no reliable way to remove or relabel an auto-generated capability card, so the fix is to make it
+**unit-agnostic**: dropping static `units` removes the wrong label (the card now shows no unit, like
+the custom `glucose_above`/`glucose_below` *conditions* it sits beside — those are hand-written and
+carry the explicit "In the unit selected in this device's settings" placeholder, which an
+auto-generated card can't), and `decimals: 1` lets mmol users enter fractional thresholds (e.g. `5.5`).
+The per-device tile label/decimals are unaffected (still set by `setCapabilityOptions`).
+`measure_glucose` now also sets **`"insights": true`** — Insights is opt-in on Homey, and until this
+was added only the five `alarm_*` capabilities had it, so glucose was never logged at all. Turning it
+on knowingly re-accepts the same unitless tradeoff as the auto-generated flow cards above: Insights
+also reads the static manifest and ignores per-device `setCapabilityOptions`, so the graph shows raw
+numbers with no unit label (unavoidable — the stored value is mg/dL for some devices and mmol/L for
+others, so any single static label would be wrong for half of them). Re-check the whole tradeoff if a
+future Homey firmware ever teaches auto-generated cards / Insights to honour `setCapabilityOptions`
+(issue #372 is still open) — at that point restoring a static `units` might become viable, though it
+still couldn't be per-device.
+
 Units and thresholds now live on the *same* device settings form, so a single save can change both
 at once. That resolution is **`lib/dexcom/thresholds.ts`'s `resolveThresholdsOnSave()`**, a pure
 function returning `{ error } | { thresholds, units, unitsChanged }` — the same result shape (and

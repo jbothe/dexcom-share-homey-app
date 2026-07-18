@@ -6,10 +6,10 @@
     "de": "Aktueller CGM-Glukosewert",
     "nl": "Huidige CGM-glucosewaarde"
   },
-  "units": { "en": "mg/dL", "de": "mg/dL", "nl": "mg/dL" },
   "icon": "/assets/capabilities/measure_glucose.svg",
-  "decimals": 0,
+  "decimals": 1,
   "getable": true,
   "setable": false,
+  "insights": true,
   "uiComponent": "sensor"
 }
