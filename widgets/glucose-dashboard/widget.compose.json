@@ -1,6 +1,6 @@
 {
   "name": { "en": "Glucose Dashboard", "de": "Glukose-Dashboard", "nl": "Glucose-dashboard" },
-  "height": 180,
+  "height": 176,
   "settings": [
     {
       "id": "device",
