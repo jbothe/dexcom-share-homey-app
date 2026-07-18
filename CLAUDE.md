@@ -606,14 +606,17 @@ shipping Dexcom's own wordmark as the app icon (and its dot mark as the driver i
 Homey asks a Dexcom client to ship, the same way the name "Dexcom Share" is (see the Localization
 section's rename note). No distinct/original mark is needed or wanted here.
 
-**App Store image-guideline status (audited against the guidelines above — dimensions all pass):**
-App images and driver images both now pass content too (see the raster-images paragraph above), so
-the only outstanding image asset is the widget preview:
-- **`widgets/glucose-dashboard/preview-{light,dark}.png` are still the skeleton `homey app create`
-  rocket** (and the "dark" one isn't even dark). They must be real renders of the glucose widget in
-  each theme, transparent background, no text/screenshot chrome — produce them from the
-  `test/widget-preview.html` harness (see the Widget section). This is the one image item unblocked
-  regardless of any branding decision, since the widget renders identically whatever the app is named.
+**App Store image-guideline status (audited against the guidelines above): all image assets now pass,
+content included.** App and driver images are real product photography (see the raster-images
+paragraph above); the widget previews (`widgets/glucose-dashboard/preview-{light,dark}.png`,
+1024x1024, transparent) are now genuine light/dark abstract card illustrations in Homey's own
+Figma-template style — a stylized card with placeholder rows and a chart, **not** the old skeleton
+rocket and **not** a literal render of the running widget. That abstract style is deliberate and in
+fact *more* compliant than a real render would be: the guidelines prohibit text and screenshots and
+warn against excessive detail in widget previews, so the generic template card (no value/badge/axis
+text) clears those where a faithful screenshot of the actual widget would not. Only the accent colour
+is the template's default violet rather than this app's severity palette — cosmetic, and not worth
+re-rendering.
 
 ## Testing
 Pure logic in `lib/` gets `node:test` coverage (mirrors chargeiq's philosophy — thin Homey adapters
