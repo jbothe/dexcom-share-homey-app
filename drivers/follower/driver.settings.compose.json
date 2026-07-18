@@ -2,9 +2,9 @@
   {
     "type": "group",
     "label": {
-      "en": "Dexcom Share account",
-      "de": "Dexcom Share-Konto",
-      "nl": "Dexcom Share-account"
+      "en": "Dexcom account",
+      "de": "Dexcom-Konto",
+      "nl": "Dexcom-account"
     },
     "children": [
       {
@@ -12,9 +12,9 @@
         "type": "text",
         "label": { "en": "Username", "de": "Benutzername", "nl": "Gebruikersnaam" },
         "hint": {
-          "en": "Dexcom Share username, email, or phone number of the person wearing the sensor — the same login they use in the G6/G7 app.",
-          "de": "Dexcom Share-Benutzername, E-Mail-Adresse oder Telefonnummer der Person, die den Sensor trägt — dieselben Zugangsdaten, die sie in der G6/G7-App verwendet.",
-          "nl": "Dexcom Share-gebruikersnaam, e-mailadres of telefoonnummer van de persoon die de sensor draagt — dezelfde inloggegevens die in de G6/G7-app worden gebruikt."
+          "en": "Dexcom username, email, or phone number of the person wearing the sensor — the same login they use in the G6/G7 app.",
+          "de": "Dexcom-Benutzername, E-Mail-Adresse oder Telefonnummer der Person, die den Sensor trägt — dieselben Zugangsdaten, die sie in der G6/G7-App verwendet.",
+          "nl": "Dexcom-gebruikersnaam, e-mailadres of telefoonnummer van de persoon die de sensor draagt — dezelfde inloggegevens die in de G6/G7-app worden gebruikt."
         },
         "value": ""
       },
@@ -23,9 +23,9 @@
         "type": "password",
         "label": { "en": "Password", "de": "Passwort", "nl": "Wachtwoord" },
         "hint": {
-          "en": "Password for that same Dexcom Share account. Stored securely and only used to poll for glucose readings.",
-          "de": "Passwort desselben Dexcom Share-Kontos. Wird sicher gespeichert und nur verwendet, um Glukosewerte abzurufen.",
-          "nl": "Wachtwoord van datzelfde Dexcom Share-account. Wordt veilig opgeslagen en alleen gebruikt om glucosewaarden op te halen."
+          "en": "Password for that same Dexcom account. Stored securely and only used to poll for glucose readings.",
+          "de": "Passwort desselben Dexcom-Kontos. Wird sicher gespeichert und nur verwendet, um Glukosewerte abzurufen.",
+          "nl": "Wachtwoord van datzelfde Dexcom-account. Wordt veilig opgeslagen en alleen gebruikt om glucosewaarden op te halen."
         },
         "value": ""
       },
@@ -49,7 +49,7 @@
   },
   {
     "type": "group",
-    "label": { "en": "Display", "de": "Anzeige", "nl": "Weergave" },
+    "label": { "en": "Data", "de": "Daten", "nl": "Gegevens" },
     "children": [
       {
         "id": "units",
@@ -65,6 +65,19 @@
           { "id": "mgdl", "label": { "en": "mg/dL", "de": "mg/dL", "nl": "mg/dL" } },
           { "id": "mmol", "label": { "en": "mmol/L", "de": "mmol/L", "nl": "mmol/L" } }
         ]
+      },
+      {
+        "id": "noDataTimeoutMin",
+        "type": "number",
+        "label": { "en": "No-data timeout (minutes)", "de": "Zeitüberschreitung ohne Daten (Minuten)", "nl": "Time-out zonder gegevens (minuten)" },
+        "hint": {
+          "en": "If no new reading arrives for this many minutes, the No Data alarm triggers. Dexcom sensors normally report roughly every 5 minutes, so a small multiple of that absorbs the occasional missed transmission.",
+          "de": "Wenn innerhalb dieser Anzahl von Minuten kein neuer Messwert eintrifft, löst der Alarm „Keine Daten“ aus. Dexcom-Sensoren melden normalerweise etwa alle 5 Minuten, sodass ein kleines Vielfaches davon gelegentlich ausbleibende Übertragungen abfängt.",
+          "nl": "Als er binnen dit aantal minuten geen nieuwe meting binnenkomt, wordt het alarm ‘geen gegevens’ geactiveerd. Dexcom-sensoren rapporteren normaal ongeveer elke 5 minuten, dus een klein veelvoud daarvan vangt incidentele gemiste overdrachten op."
+        },
+        "value": 20,
+        "min": 10,
+        "max": 120
       }
     ]
   },
@@ -116,25 +129,6 @@
         "max": 400,
         "decimals": 1,
         "step": 0.1
-      }
-    ]
-  },
-  {
-    "type": "group",
-    "label": { "en": "Data freshness", "de": "Datenaktualität", "nl": "Actualiteit van gegevens" },
-    "children": [
-      {
-        "id": "noDataTimeoutMin",
-        "type": "number",
-        "label": { "en": "No-data timeout (minutes)", "de": "Zeitüberschreitung ohne Daten (Minuten)", "nl": "Time-out zonder gegevens (minuten)" },
-        "hint": {
-          "en": "If no new reading arrives for this many minutes, the No Data alarm triggers. Dexcom sensors normally report roughly every 5 minutes, so a small multiple of that absorbs the occasional missed transmission.",
-          "de": "Wenn innerhalb dieser Anzahl von Minuten kein neuer Messwert eintrifft, löst der Alarm „Keine Daten“ aus. Dexcom-Sensoren melden normalerweise etwa alle 5 Minuten, sodass ein kleines Vielfaches davon gelegentlich ausbleibende Übertragungen abfängt.",
-          "nl": "Als er binnen dit aantal minuten geen nieuwe meting binnenkomt, wordt het alarm ‘geen gegevens’ geactiveerd. Dexcom-sensoren rapporteren normaal ongeveer elke 5 minuten, dus een klein veelvoud daarvan vangt incidentele gemiste overdrachten op."
-        },
-        "value": 20,
-        "min": 10,
-        "max": 120
       }
     ]
   }

@@ -519,9 +519,20 @@ official companion app for viewing someone else's data is separately called "Dex
 to whatever this app calls itself. Renamed only
 the two display-name strings and copy that directly echoes them — did **not** rename the `follower`
 driver id/folder, the `DexcomFollowApp` class, `driver_id=follower` flow-card filters, or the
-"Dexcom Share account"/"Glucose unit" *upstream-service* terminology used correctly elsewhere in
-settings labels — those are internal identifiers or genuinely-accurate upstream-service references,
-not the app's own product name, and renaming them wasn't part of this ask.
+"Glucose unit" settings label and the "Dexcom Share server"/"Dexcom Share API" *upstream-service*
+terminology used correctly elsewhere — those are internal identifiers or genuinely-accurate
+upstream-service references, not the app's own product name, and renaming them wasn't part of that ask.
+
+**Settings "Share" cleanup (later, separate ask):** the credentials group's own label and copy were
+subsequently changed from "Dexcom **Share** account" to plain "Dexcom account" — the group `label`
+plus the username/password hints in `driver.settings.compose.json` (all three locales). This is the
+one settings-label rename that *did* happen, reversing the "did not rename the settings labels"
+decision above specifically for the account label: it names the user's own account, not the upstream
+Share service, so "Share" was noise there. The **region** hint's "Dexcom Share server" was left
+alone (it genuinely names the upstream server). At the same time the two single-field groups
+**"Display"** (glucose unit) and **"Data freshness"** (no-data timeout) were **collapsed into one
+group labelled "Data"** (de "Daten", nl "Gegevens"), so the settings form is now three groups:
+"Dexcom account" → "Data" → "Alarm thresholds".
 
 ## Not yet verified
 **The Homey Cloud target is unverified.** Both manifests declare `platforms: ["local", "cloud"]`
