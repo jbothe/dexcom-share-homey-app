@@ -9,7 +9,7 @@ jobs:
     name: Validate Homey App
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The validate action compiles the app with `npx tsc --showConfig`, and tsconfig.json
       # extends @tsconfig/node16/tsconfig.json - which lives in node_modules. Without this
@@ -17,7 +17,7 @@ jobs:
       # far less obvious "Tsconfig validation failed: unable to read configuration". The stock
       # Athom skeleton omits it, so this fails on any TypeScript app whose tsconfig extends a
       # package. Keep it ahead of every athombv/* step that compiles.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm

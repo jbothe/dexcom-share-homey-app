@@ -7,11 +7,11 @@ jobs:
     name: Publish Homey App
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Same reason as homey-app-validate.yml's own install step: this action compiles the app
       # too, so node_modules must exist before it runs or tsc can't resolve tsconfig's extends.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
