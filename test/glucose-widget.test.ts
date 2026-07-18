@@ -102,9 +102,11 @@ test('fmtAgo: relative time formatting', () => {
 
 const SPARK_NOW = 1_700_000_000_000;
 
+type Segment = { points: string; cls: string };
+
 test('sparkline: empty history returns no segments, no dots, no zones, and no ticks', () => {
   const result = GD.sparkline([], 'mgdl', { nowMs: SPARK_NOW }) as {
-    segments: string[]; dots: unknown[]; zones: unknown[]; yTicks: unknown[];
+    segments: Segment[]; dots: unknown[]; zones: unknown[]; yTicks: unknown[];
   };
   assert.deepEqual(result.segments, []);
   assert.deepEqual(result.dots, []);
@@ -141,10 +143,10 @@ test('sparkline: x-axis is a fixed WINDOW_MS-wide window anchored to now, not th
     { t: SPARK_NOW - windowMs, v: 100 }, { t: SPARK_NOW - windowMs + 300_000, v: 150 },
     { t: SPARK_NOW - 300_000, v: 90 }, { t: SPARK_NOW, v: 80 },
   ];
-  const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as { segments: string[] };
+  const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as { segments: Segment[] };
   assert.equal(result.segments.length, 2);
-  const first = result.segments[0].split(' ').map((p) => p.split(',').map(Number));
-  const last = result.segments[1].split(' ').map((p) => p.split(',').map(Number));
+  const first = result.segments[0].points.split(' ').map((p) => p.split(',').map(Number));
+  const last = result.segments[1].points.split(' ').map((p) => p.split(',').map(Number));
   assert.equal(first[0][0], 0, 'sample at window start lands at x=0');
   assert.equal(last[1][0], 260, 'sample at "now" lands at x=width');
   // Higher glucose draws higher on screen (smaller y, since SVG y grows downward).
@@ -156,8 +158,8 @@ test('sparkline: a stale tail (no reading for the last 20 minutes) leaves a trai
   const history = [
     { t: SPARK_NOW - 20 * 60_000 - 300_000, v: 100 }, { t: SPARK_NOW - 20 * 60_000, v: 105 },
   ];
-  const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as { segments: string[] };
-  const lastPoint = result.segments[0].split(' ').slice(-1)[0].split(',').map(Number);
+  const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as { segments: Segment[] };
+  const lastPoint = result.segments[0].points.split(' ').slice(-1)[0].split(',').map(Number);
   assert.ok(lastPoint[0] < 260, 'the last actual reading does not reach the right (now) edge');
 });
 
@@ -168,11 +170,34 @@ test('sparkline: breaks the line across a gap wider than GAP_THRESHOLD_MS, but s
     { t: SPARK_NOW - 2 * 300_000 + gapMs, v: 110 }, // stranded on both sides by gaps
   ];
   const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as {
-    segments: string[]; dots: { x: number; y: number }[];
+    segments: Segment[]; dots: { x: number; y: number }[];
   };
   assert.equal(result.segments.length, 1, 'only the connected pair forms a line segment');
-  assert.equal(result.segments[0].split(' ').length, 2);
+  assert.equal(result.segments[0].points.split(' ').length, 2);
   assert.equal(result.dots.length, 3, 'every sample gets a dot, including the one stranded between gaps');
+});
+
+test('sparkline: each dot and its incoming line carry the severity zone the arriving sample falls in', () => {
+  const history = [
+    { t: SPARK_NOW - 3 * 300_000, v: 120 }, // normal
+    { t: SPARK_NOW - 2 * 300_000, v: 60 }, // low
+    { t: SPARK_NOW - 300_000, v: 50 }, // urgent-low
+    { t: SPARK_NOW, v: 250 }, // high
+  ];
+  const result = GD.sparkline(history, 'mgdl', {
+    width: 260, height: 90, urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180, nowMs: SPARK_NOW,
+  }) as { segments: Segment[]; dots: { cls: string }[] };
+  assert.deepEqual(result.dots.map((d) => d.cls), ['normal', 'low', 'urgent-low', 'high']);
+  // A per-pair segment is colored by the sample it arrives at (the later point).
+  assert.deepEqual(result.segments.map((s) => s.cls), ['low', 'urgent-low', 'high']);
+});
+
+test('sparkline: without thresholds every sample classifies as normal rather than erroring', () => {
+  const history = [{ t: SPARK_NOW - 300_000, v: 100 }, { t: SPARK_NOW, v: 105 }];
+  const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as {
+    dots: { cls: string }[];
+  };
+  assert.ok(result.dots.every((d) => d.cls === 'normal'));
 });
 
 type Zone = { cls: string; y: number; height: number };

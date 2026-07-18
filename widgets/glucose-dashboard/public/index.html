@@ -25,7 +25,8 @@
        tokens): Homey's own palette values (--homey-color-*) are fixed across light/dark (see
        homey-mock.css), so a flat color-mix reads as light shading on a light card but turns a
        near-black one into solid blocks of color. --spark-line-normal is deliberately NOT in
-       that group - blue-600 in both themes, so it's set once in :root and never overridden.
+       that group - green in both themes (the normal-zone reading color), so it's set once in
+       :root and never overridden.
 
        Each theme is spelled out in full, three times over, and that repetition is load-bearing:
        every block must list all four zone tokens. Homey's real dashboard only ever takes the
@@ -48,11 +49,11 @@
        names a raw color. */
     :root {
       --spark-yellow: #ffc800;
-      --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 10%, transparent);
-      --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 12%, transparent);
-      --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 10%, transparent);
-      --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 16%, transparent);
-      --spark-line-normal: var(--homey-color-blue-600);
+      --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 7%, transparent);
+      --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 9%, transparent);
+      --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 7%, transparent);
+      --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 12%, transparent);
+      --spark-line-normal: var(--homey-color-green);
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -69,21 +70,22 @@
       --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 13%, transparent);
     }
     :root[data-theme='light'] {
-      --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 10%, transparent);
-      --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 12%, transparent);
-      --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 10%, transparent);
-      --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 16%, transparent);
+      --spark-zone-urgent-low: color-mix(in srgb, var(--homey-color-red) 7%, transparent);
+      --spark-zone-low: color-mix(in srgb, var(--homey-color-orange) 9%, transparent);
+      --spark-zone-normal: color-mix(in srgb, var(--homey-color-green) 7%, transparent);
+      --spark-zone-high: color-mix(in srgb, var(--spark-yellow) 12%, transparent);
     }
 
-    /* Header row: name/age (left) beside a right-aligned value+trend (the primary
-       glance-value). The alarm pill sits inline right after the name, on the same row -
-       align-items: baseline on .name-row lines up the badge's text baseline with the name's,
-       and .badge's own margin-left is the "breathing room" gap between them (rather than a
-       separate flex slot). .main stays at the row's default flex-start (top) alignment since
-       it no longer has a baseline partner to match. */
-    .headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--homey-su-2); }
-    .meta { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 1 1 auto; min-width: 0; }
-    .name-row { display: flex; align-items: baseline; min-width: 0; }
+    /* Header row: name/age (left), the alarm pill (center), value+trend (right, the primary
+       glance-value), as three flex children. The middle .badge-wrap is the only one that grows
+       (flex: 1), so the pill sits horizontally centered in the gap between the name block's
+       right edge and the value block's left edge; it stays present (empty, .badge:empty hidden)
+       when there's no alarm, keeping value+trend pinned right. All three children (name, pill,
+       value) sit at the row's default flex-start (top) alignment, so the pill top-aligns with
+       the name rather than centering against the taller value block. */
+    .headrow { display: flex; align-items: flex-start; gap: var(--homey-su-2); }
+    .meta { display: flex; flex-direction: column; align-items: flex-start; gap: 0; flex: 0 1 auto; min-width: 0; }
+    .badge-wrap { flex: 1 1 auto; display: flex; align-items: flex-start; justify-content: center; min-width: 0; }
     .ago { color: var(--homey-text-color-light); white-space: nowrap; }
 
     .main { display: flex; align-items: center; gap: var(--homey-su-2); flex: 0 0 auto; }
@@ -97,7 +99,8 @@
 
     /* Same font-size/weight as .name (homey-text-bold on both) so the pill reads as a peer of
        the device name, not a smaller sub-label - text-transform: uppercase kept regardless of
-       casing in the underlying badge text. margin-left is the "breathing room" after the name.
+       casing in the underlying badge text. Horizontal placement (centered between name and
+       value) is owned by the .badge-wrap flex cell, so the pill itself carries no margin.
 
        The pill read bottom-heavy on a real Homey. Its padding wraps the *line box*, which always
        reserves room for descenders, but text-transform: uppercase means no glyph in it ever has
@@ -113,7 +116,7 @@
        line-height-driven box already came to, so the header row's height is unchanged. Clients
        predating text-box (Chrome <133 / Safari <18.2) just keep the old uncorrected rendering. */
     .badge {
-      display: inline-block; margin-left: var(--homey-su-4); padding: 1px var(--homey-su-2);
+      display: inline-block; padding: 1px var(--homey-su-2);
       border-radius: var(--homey-border-radius-default); text-transform: uppercase;
     }
     @supports (text-box: trim-both cap alphabetic) {
@@ -132,15 +135,21 @@
     .spark .zone.low { fill: var(--spark-zone-low); }
     .spark .zone.normal { fill: var(--spark-zone-normal); }
     .spark .zone.high { fill: var(--spark-zone-high); }
+    /* Line and dots are colored per-sample by the severity zone the reading fell in (see
+       GD.sparkline's zoneClass) - solid, fully-opaque palette hues so each sits at high contrast
+       over its own faint (10-16% alpha) shaded background zone: urgent-low red, low orange,
+       normal green (the --spark-line-normal default), high yellow. */
     .spark .line { fill: none; stroke: var(--spark-line-normal); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
     .spark .line.urgent-low { stroke: var(--homey-color-red); }
-    .spark .line.low, .spark .line.high { stroke: var(--homey-color-orange); }
+    .spark .line.low { stroke: var(--homey-color-orange); }
+    .spark .line.high { stroke: var(--spark-yellow); }
     /* One dot per sample, on top of the line(s) - see GD.sparkline's own comment on why: a
        sample stranded between two gaps isn't part of any 2-point line segment, so without its
        own dot it would be invisible even though it's a real reading. */
     .spark .dot { fill: var(--spark-line-normal); }
     .spark .dot.urgent-low { fill: var(--homey-color-red); }
-    .spark .dot.low, .spark .dot.high { fill: var(--homey-color-orange); }
+    .spark .dot.low { fill: var(--homey-color-orange); }
+    .spark .dot.high { fill: var(--spark-yellow); }
     /* The domain's two edges carry a value label but no rule of their own - the shaded zones
        already tile the whole plot area, so their outer edges mark the same two boundaries a
        gridline would have drawn. */
@@ -153,11 +162,11 @@
   <div class="card homey-widget" id="card">
     <div class="headrow">
       <div class="meta">
-        <div class="name-row">
-          <div class="name homey-text-bold" id="name"></div>
-          <div class="badge homey-text-bold" id="badge"></div>
-        </div>
+        <div class="name homey-text-bold" id="name"></div>
         <div class="ago homey-text-small-light" id="ago"></div>
+      </div>
+      <div class="badge-wrap">
+        <div class="badge homey-text-bold" id="badge"></div>
       </div>
       <div class="main">
         <div class="value" id="value">–</div>
@@ -271,13 +280,14 @@
       // (DEXCOM_MIN_MGDL/MAX_MGDL) rather than the data's own min/max, so a threshold or reading
       // is always within bounds without needing to widen/pad the domain per-render.
       //
-      // Returns `segments` (one points-string per contiguous run of samples with no
-      // GAP_THRESHOLD_MS-or-wider hole between them - only runs of 2+ points, since a lone
-      // point can't form a line) and `dots` (every in-window sample's {x,y}, regardless of
-      // which segment or none it belongs to - a sample stranded between two gaps would
-      // otherwise vanish entirely, since it's not part of any 2-point segment). Also returns
-      // the shaded severity `zones` (see ZONES below) and the y-axis tick labels. y is
-      // inverted (SVG down = positive) since higher glucose draws higher.
+      // Returns `segments` (one { points, cls } per adjacent gap-free pair of samples - `cls`
+      // is the severity zone the arriving sample falls in, so a run crossing a threshold changes
+      // color mid-trace; a pair split by a GAP_THRESHOLD_MS-or-wider hole yields no segment) and
+      // `dots` (every in-window sample's { x, y, cls }, regardless of which segment or none it
+      // belongs to - a sample stranded between two gaps would otherwise vanish entirely, since
+      // it's not part of any pair). Also returns the shaded severity `zones` (see ZONES below)
+      // and the y-axis tick labels. y is inverted (SVG down = positive) since higher glucose
+      // draws higher.
       sparkline: function (history, units, opts) {
         opts = opts || {};
         var W = opts.width || 260;
@@ -296,22 +306,36 @@
         };
         // Samples outside the fixed window are dropped, not just left off-screen - e.g. after
         // a long outage, an old sample would otherwise land at a negative x.
+        // Each sample keeps its raw mg/dL (v) so it can be classified into the same severity
+        // zone the shaded background uses - the dot and the line arriving at it are then colored
+        // to match that zone (see zoneClass below), so every sample's dot/line reads as the
+        // range it landed in rather than one flat color for the whole trace.
         var pts = history
           .filter(function (p) { return p.t >= t0 && p.t <= t1; })
-          .map(function (p) { var xy = toXY(p.t, GD.toDisplay(p.v, units)); return { x: xy.x, y: xy.y, t: p.t }; });
+          .map(function (p) { var xy = toXY(p.t, GD.toDisplay(p.v, units)); return { x: xy.x, y: xy.y, t: p.t, v: p.v }; });
 
+        // Same threshold cuts as the shaded zones above, applied to a single reading - a missing
+        // threshold just can't push the value below/above it, so classification degrades to
+        // 'normal' rather than erroring (matching how those zones drop when a bound is absent).
+        var zoneClass = function (mgdl) {
+          if (opts.urgentLowMgDl != null && mgdl < opts.urgentLowMgDl) return 'urgent-low';
+          if (opts.lowMgDl != null && mgdl < opts.lowMgDl) return 'low';
+          if (opts.highMgDl != null && mgdl >= opts.highMgDl) return 'high';
+          return 'normal';
+        };
+
+        // One line element per adjacent, gap-free pair (rather than one polyline per contiguous
+        // run) so each leg can carry its own zone color - colored by the sample it arrives at
+        // (pts[i]), so the trace turns e.g. yellow as it climbs into the high zone. A pair split
+        // by a GAP_THRESHOLD_MS-or-wider hole draws no connecting leg at all.
         var segments = [];
-        var current = [];
         pts.forEach(function (p, i) {
-          if (i > 0 && (p.t - pts[i - 1].t) > GD.GAP_THRESHOLD_MS) {
-            if (current.length > 1) segments.push(current);
-            current = [];
-          }
-          current.push(p);
-        });
-        if (current.length > 1) segments.push(current);
-        var segmentPoints = segments.map(function (seg) {
-          return seg.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+          if (i === 0 || (p.t - pts[i - 1].t) > GD.GAP_THRESHOLD_MS) return;
+          var prev = pts[i - 1];
+          segments.push({
+            points: prev.x.toFixed(1) + ',' + prev.y.toFixed(1) + ' ' + p.x.toFixed(1) + ',' + p.y.toFixed(1),
+            cls: zoneClass(p.v),
+          });
         });
 
         var valueY = function (mgdl) {
@@ -345,8 +369,8 @@
           { y: H, label: GD.fmtTick(domainMin, units) },
         ];
         return {
-          segments: segmentPoints,
-          dots: pts.map(function (p) { return { x: p.x, y: p.y }; }),
+          segments: segments,
+          dots: pts.map(function (p) { return { x: p.x, y: p.y, cls: zoneClass(p.v) }; }),
           zones: zones,
           yTicks: yTicks,
         };
@@ -423,7 +447,6 @@
         return;
       }
 
-      var severity = GD.severity(payload.alarms);
       var noData = !!(payload.alarms && payload.alarms.noData);
       // The poller never clears mgDl/trendDirection when a device goes stale - they're just the
       // last-known reading, sitting there indefinitely. Once noData is set, that reading is no
@@ -458,14 +481,16 @@
         return '<rect class="zone ' + z.cls + '" x="0" y="' + z.y.toFixed(1) + '" width="260" height="'
           + z.height.toFixed(1) + '"></rect>';
       }).join('');
-      // One <polyline> per gap-free run (see GD.sparkline) so a real data gap draws as a break,
-      // not a straight line bridging it, plus one <circle> per sample so a point stranded
-      // between two gaps still shows up even without a line either side of it.
-      var lines = (spark.segments || []).map(function (pts) {
-        return '<polyline class="line ' + severity + '" points="' + pts + '"></polyline>';
+      // One <polyline> per adjacent gap-free pair (see GD.sparkline) so a real data gap draws as
+      // a break, not a straight line bridging it, plus one <circle> per sample so a point
+      // stranded between two gaps still shows up even without a line either side of it. Each
+      // carries its own zone class, so the dot and its incoming line are colored to match the
+      // shaded background zone the sample landed in.
+      var lines = (spark.segments || []).map(function (seg) {
+        return '<polyline class="line ' + seg.cls + '" points="' + seg.points + '"></polyline>';
       }).join('');
       var dots = (spark.dots || []).map(function (p) {
-        return '<circle class="dot ' + severity + '" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.6"></circle>';
+        return '<circle class="dot ' + p.cls + '" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.6"></circle>';
       }).join('');
       var tickLabels = (spark.yTicks || []).map(function (t) {
         // Baseline nudged in from the exact edge (a label at y=0/y=H would otherwise clip
