@@ -11,7 +11,7 @@
     "alarm_rapid_change",
     "alarm_no_data"
   ],
-  "platforms": ["local", "cloud"],
+  "platforms": ["local"],
   "connectivity": ["cloud"],
   "images": {
     "small": "/drivers/follower/assets/images/small.png",

@@ -1,12 +1,11 @@
 {
-  "id": "family.bothe.dexcom",
+  "id": "com.dexcom.share",
   "version": "1.0.0",
   "compatibility": ">=12.4.0",
   "sdk": 3,
   "runtime": "nodejs",
   "platforms": [
-    "local",
-    "cloud"
+    "local"
   ],
   "name": {
     "en": "Dexcom Share",

@@ -2,15 +2,22 @@
 
 Homey app (SDK v3, TypeScript, CommonJS output) that follows one or more Dexcom Share CGM
 accounts via the [`dexcom-share-client`](https://npmx.dev/package/dexcom-share-client) npm package,
-exposing glucose data through Flow cards and a live dashboard widget. **Targets both Homey Pro and
-Homey Cloud** — `platforms: ["local", "cloud"]` in `.homeycompose/app.json` and
-`driver.compose.json` alike, with `connectivity: ["cloud"]` (there is no local Dexcom endpoint;
-every reading comes over the internet). That dual target is deliberate, not a leftover skeleton
-default. Note the dashboard widget itself needs Homey Pro ≥12.4.0 (hence `compatibility`), so on
-Homey Cloud the app is Flow-cards-and-capabilities only — the widget simply doesn't appear.
-Development and all real-device verification so far has been against Homey Pro; the Cloud target
-is **unverified on real hardware** (see "Not yet verified"). App id
-`family.bothe.dexcom`, name "Dexcom Share" (paired device/driver display name "Dexcom User" — see
+exposing glucose data through Flow cards and a live dashboard widget. **Targets Homey Pro only** —
+`platforms: ["local"]` in `.homeycompose/app.json` and `driver.compose.json` alike, with
+`connectivity: ["cloud"]` (there is no local Dexcom endpoint; every reading comes over the
+internet — `connectivity` describes how the *device* talks to Dexcom, unrelated to the Homey
+Cloud *platform* option removed here). Homey Cloud publishing is intended for verified companies,
+which this app is not, so the `cloud` platform entry was dropped rather than carried as an
+unused/unpublishable target — this app previously declared `platforms: ["local", "cloud"]` as a
+deliberate dual target, but that's no longer the case. App id `com.dexcom.share` (renamed from
+`family.bothe.dexcom` — reverse-DNS app ids are conventionally the *developer's* domain, not the
+followed brand's; since Homey's own guidelines direct third-party brand apps to use the brand's
+*name* and *icon* (see Localization/Art below) but say nothing about the id, and this app is
+already name-identical to Dexcom's own upstream Share service, `com.dexcom.share` was chosen
+knowingly matching that pattern rather than a `family.bothe.*`-style personal-domain id — worth
+revisiting if Homey's app-store review ever treats a brand-owned-looking id as a compliance
+concern distinct from the name/icon guidance it does document), name "Dexcom Share" (paired
+device/driver display name "Dexcom User" — see
 Localization below; internal code identifiers like the `DexcomFollowApp` class and the `follower`
 driver id/folder were deliberately left as-is, since renaming those is a much larger, purely
 internal refactor the display-name change didn't require). Modeled on the sibling app
@@ -418,22 +425,26 @@ and dark.
 border-radius px), not authoritative — real on-device verification (exact fonts, real color/radius
 values, and the actual autocomplete-setting device-picker plumbing) still needs `homey app run`.
 
-**`widget.compose.json`'s `"height": 180` is calculated, not guessed.** The card's content height
+**`widget.compose.json`'s `"height": 176` is calculated, not guessed.** The card's content height
 is fully static — the sparkline's y-domain is now the fixed Dexcom sensor range (see `GD.sparkline`
 above) rather than data-driven, and the header never wraps to a second line at the widget's actual
-on-dashboard width — so every possible payload state renders to one of exactly two heights, measured
+on-dashboard width — so every possible payload state renders to the same measured height, measured
 by injecting `homey-mock.css` into the real `public/index.html` (not the iframe harness, which
 already imposes its own fixed `380x240` box) and calling `render()` directly at a 380px viewport
-width: 174px with no alarm badge, ~176px with one (the badge's own box + vertical padding nudges the
-name row a couple px taller than the badge-less 174px case). `180` is that 176px max plus a small
+width. Re-measure the same way (`render()` at 380px width, badge and no-badge states, `mgdl` and
+`mmol`) if the header/badge/chart CSS changes again, rather than hand-adjusting this number.
+
+Since the alarm pill moved into its own `.badge-wrap` flex cell, top-aligned alongside `.meta` and
+`.main` rather than sitting inline at the name's baseline (see the header-row comment above), the
+badge no longer nudges the row taller when present: all four measured states (badge/no-badge ×
+`mgdl`/`mmol`) now render to the *same* 172px, not the old two-height split (174px badge-less /
+~176px with a badge) that motivated the original buffer. `176` is that uniform 172px plus a small
 buffer, not the true minimum — `homey-mock.css`'s font metrics are its own approximations (see
-above), so a real-device font could plausibly render a few px taller than this mock. Re-measure the
-same way (`render()` at 380px width, badge and no-badge states, `mgdl` and `mmol`) if the
-header/badge/chart CSS changes again, rather than hand-adjusting this number. The badge's
-`text-box` trim (see below) is the one input here that is deliberately *font-dependent*: the pill's
-height is now cap-height-driven, so it varies by a fraction of a px per font (30.32px against the
-mock's own font, vs. the 30px its old line-height-driven box came to) — immaterial against the
-buffer, but it means the badge case will never re-measure to a perfectly round number again.
+above), so a real-device font could plausibly render a few px taller than this mock. The badge's
+`text-box` trim (see below) is still font-dependent (30.3px against the mock's own font) but no
+longer height-determining here, since the badge (30.3px) sits well under the row's own height (48px,
+set by `.meta`'s stacked name + "time ago" lines) — re-measure it anyway if a future change makes
+the badge tall enough to exceed that.
 
 **Sparkline x-axis is a fixed `WINDOW_MS` (3h, matching `DexcomPoller`'s own `getGlucoseReadings(180,
 36)` call) window anchored to `opts.nowMs` (defaults to `Date.now()`), not to the actual first/last
@@ -565,10 +576,6 @@ group labelled "Data"** (de "Daten", nl "Gegevens"), so the settings form is now
 "Dexcom account" → "Data" → "Alarm thresholds".
 
 ## Not yet verified
-**The Homey Cloud target is unverified.** Both manifests declare `platforms: ["local", "cloud"]`
-intentionally (see the header), but every real-device session so far has been Homey Pro. Nothing
-about Cloud has been exercised — including whether the polling cadence and long-lived client hold
-up under its runtime.
 
 No real Homey Pro was reachable while building this app; real-device testing started later and is
 ongoing. **Confirmed working:** pairing (`pair/login.html`, a real Dexcom Share account),

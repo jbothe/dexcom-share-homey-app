@@ -1,5 +1,5 @@
 {
-  "name": "family.bothe.dexcom",
+  "name": "com.dexcom.share",
   "version": "1.0.0",
   "engines": {
     "node": ">=16.0.0"
