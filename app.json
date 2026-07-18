@@ -448,9 +448,9 @@
   "drivers": [
     {
       "name": {
-        "en": "Dexcom User",
-        "de": "Dexcom User",
-        "nl": "Dexcom User"
+        "en": "Dexcom",
+        "de": "Dexcom",
+        "nl": "Dexcom"
       },
       "class": "sensor",
       "capabilities": [

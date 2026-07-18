@@ -17,7 +17,7 @@ already name-identical to Dexcom's own upstream Share service, `com.dexcom.share
 knowingly matching that pattern rather than a `family.bothe.*`-style personal-domain id — worth
 revisiting if Homey's app-store review ever treats a brand-owned-looking id as a compliance
 concern distinct from the name/icon guidance it does document), name "Dexcom Share" (paired
-device/driver display name "Dexcom User" — see
+device/driver display name "Dexcom" — see
 Localization below; internal code identifiers like the `DexcomFollowApp` class and the `follower`
 driver id/folder were deliberately left as-is, since renaming those is a much larger, purely
 internal refactor the display-name change didn't require). Modeled on the sibling app
@@ -546,8 +546,13 @@ Two distinct mechanisms, matching where Homey actually looks each one up:
 **App/driver display-name rename:** the app's own display name changed from "Dexcom Follow" to
 "Dexcom Share", and the paired-device/driver display name from "Dexcom Follower" to "Dexcom User"
 (`.homeycompose/app.json` / `drivers/follower/driver.compose.json` `name`, plus the widget's
-device-picker setting label and the pair screen's own copy, which now reads "Connect a Dexcom
-User"). Note "Dexcom Share" is also literally the name of Dexcom's own upstream sharing feature/API
+device-picker setting label and the pair screen's own copy, which read "Connect a Dexcom
+User"). **The driver/device display name was later simplified again, from "Dexcom User" to plain
+"Dexcom"** (`drivers/follower/driver.compose.json` `name`, all three locales) — the pair screen
+title (`locales/{en,de,nl}.json` `pair.login.title`) followed suit, changing from "Connect a Dexcom
+User" to "Connect Dexcom" rather than the grammatically awkward "Connect a Dexcom". The widget's
+own device-picker setting label was left alone (it never named "Dexcom User" specifically). Note
+"Dexcom Share" is also literally the name of Dexcom's own upstream sharing feature/API
 that this app polls (see the Pairing and Units sections above, both of which use "Dexcom Share" to
 mean *that* upstream service, not this app) — so the app is now name-identical to the very Dexcom
 service it's a third-party client for. **This is deliberate and guideline-compliant, not a concern:**

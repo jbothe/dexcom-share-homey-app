@@ -1,7 +1,7 @@
 {
   "pair": {
     "login": {
-      "title": "Dexcom-Benutzer verbinden",
+      "title": "Dexcom verbinden",
       "instructions": "Verwenden Sie das Dexcom-Konto der <strong>Person, die den Sensor trägt</strong> — dieselben Zugangsdaten, die in der G6/G7-App verwendet werden, mit aktiviertem Share. Ein separater Dexcom-Follow-Login funktioniert nicht: Die Anmeldung gelingt zwar, liefert aber keine Glukosedaten.",
       "usernameLabel": "Benutzername, E-Mail oder Telefonnummer",
       "passwordLabel": "Passwort",

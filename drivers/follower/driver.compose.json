@@ -1,5 +1,5 @@
 {
-  "name": { "en": "Dexcom User", "de": "Dexcom User", "nl": "Dexcom User" },
+  "name": { "en": "Dexcom", "de": "Dexcom", "nl": "Dexcom" },
   "class": "sensor",
   "capabilities": [
     "measure_glucose",

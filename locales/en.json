@@ -1,7 +1,7 @@
 {
   "pair": {
     "login": {
-      "title": "Connect a Dexcom User",
+      "title": "Connect Dexcom",
       "instructions": "Use the Dexcom account of the <strong>person wearing the sensor</strong> — the same login they use in the G6/G7 app, with Share turned on. A separate Dexcom Follow login won't work: it signs in fine, but returns no glucose data.",
       "usernameLabel": "Username, email, or phone",
       "passwordLabel": "Password",
