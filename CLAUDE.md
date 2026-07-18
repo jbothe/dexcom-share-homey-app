@@ -584,15 +584,20 @@ in `brandColor`). The driver icon is picked up by **filesystem convention**
 (`drivers/<id>/assets/icon.svg`); there is no `icon` key in `driver.compose.json` and `app.json`'s
 `drivers[].icon` stays `null` — that's correct and matches chargeiq exactly, so don't "fix" that null.
 
-The raster images are generated (Pillow, 4x supersampled + LANCZOS — the note about no SVG tooling
-being available still holds, so they are drawn from the same measured *dot-mark* geometry rather than
-rasterized from any SVG): `assets/images/*.png` are the dots green-on-white, `drivers/follower/assets/
-images/*.png` white-on-`#00B000` (a solid tile). That `#00B000` is the *dot logo's* own green (sampled
-as the modal core-green pixel — 95.9% exactly `#00B000`), and it **no longer matches the app's
-`brandColor` (`#56B146`, from the wordmark)** — a mismatch that only matters if these rasters are kept.
-They aren't: both sets fail the App Store *content* rules regardless (see the image-guideline gaps
-below) and are placeholders to redo, so the `#00B000`/`#56B146` split isn't worth reconciling until
-they are.
+The App Store raster images are **real Dexcom product photography**, replacing the earlier
+Pillow-generated dot-mark placeholders (those were green-on-white / white-on-`#00B000` tiles that
+failed the content rules — see below; the retired `#00B000` was the dot logo's own sampled green,
+unrelated to the current `#56B146` brandColor from the wordmark). `assets/images/*.png`
+(250x175 / 500x350 / 1000x700) is a product hero shot — receiver, phone, sensor, transmitter — a
+*"visually appealing image that represents the purpose of your app"* rather than a logo on white.
+`drivers/follower/assets/images/*.png` (75x75 / 500x500 / 1000x1000) is a Dexcom sensor on a white
+background: a recognizable picture of the device, distinct from both the app image and the app icon
+as the guidelines require (the device being *virtual* — a Dexcom Share account — the sensor is the
+evocative stand-in for "the device"). Dimensions checked with `sips`; passes `--level verified`,
+which only checks format/dimensions — the *content* rules are human-reviewed at submission. **One
+reviewer-glance risk:** the app hero shot includes a phone showing the Dexcom app, and Homey
+prohibits app images that *are* iOS/Android screenshots — a composed product shot that merely
+contains a phone reads differently and should pass, but it is the one thing to watch.
 
 **Using Dexcom's own logo is deliberate and guideline-compliant, not a trademark liability.** Homey's
 [App Store guidelines](https://apps.developer.homey.app/app-store/guidelines.md) tell third-party
@@ -601,21 +606,9 @@ shipping Dexcom's own wordmark as the app icon (and its dot mark as the driver i
 Homey asks a Dexcom client to ship, the same way the name "Dexcom Share" is (see the Localization
 section's rename note). No distinct/original mark is needed or wanted here.
 
-**App Store image-guideline gaps (audited against the guidelines above — dimensions all pass, content
-does not):**
-- **`assets/images/*.png` (app images, green-on-white) will be rejected as-is.** The guidelines
-  prohibit app images that are *"logos only"* or *"single flat shapes on monochrome/transparent
-  backgrounds"* — the current green-mark-on-white is exactly that. App images are meant to be a
-  *"visually appealing image that represents the purpose of your app"* (a glucose dashboard scene,
-  say), not the mark again. The brand *icon* rule above is about `icon.svg`, not these.
-- **`drivers/follower/assets/images/*.png` (device tile, white-on-`#00B000`) will be rejected as-is.**
-  Driver images must have *"a white background and a recognizable picture of the device"*, and may
-  **not** reuse the app icon/image — the current brand tile is neither white-background nor a device
-  picture. Complicated here by this being a *virtual* device (a Dexcom Share account, no hardware),
-  so "the device" has to be represented by something evocative (a CGM sensor/receiver, or a
-  glucose-tile illustration) on white. **NB the chargeiq split this was modeled on is not a
-  precedent to trust for App Store readiness** — mirroring its light-image/brand-tile approach is
-  what produced both rejections.
+**App Store image-guideline status (audited against the guidelines above — dimensions all pass):**
+App images and driver images both now pass content too (see the raster-images paragraph above), so
+the only outstanding image asset is the widget preview:
 - **`widgets/glucose-dashboard/preview-{light,dark}.png` are still the skeleton `homey app create`
   rocket** (and the "dark" one isn't even dark). They must be real renders of the glucose widget in
   each theme, transparent background, no text/screenshot chrome — produce them from the
