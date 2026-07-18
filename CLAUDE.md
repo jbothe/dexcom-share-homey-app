@@ -506,14 +506,17 @@ Two distinct mechanisms, matching where Homey actually looks each one up:
 "Dexcom Share", and the paired-device/driver display name from "Dexcom Follower" to "Dexcom User"
 (`.homeycompose/app.json` / `drivers/follower/driver.compose.json` `name`, plus the widget's
 device-picker setting label and the pair screen's own copy, which now reads "Connect a Dexcom
-User"). **Worth flagging explicitly: "Dexcom Share" is also literally the name of Dexcom's own
-upstream sharing feature/API that this app polls** (see the Pairing and Units sections above, both
-of which correctly use "Dexcom Share" to mean *that* upstream service, not this app) — so the app
-is now name-identical to the very feature it's a third-party client for, which reads as more
-confusing (and more trademark-adjacent) than the previous name, not less. Dexcom's own official
-companion app for viewing someone else's data is in fact called "Dexcom Follow" — the reverse of
-this rename — and `pair/login.html`'s copy still correctly refers to *that* real Dexcom product by
-that name, unrelated to whatever this app calls itself. Reconsider before publishing. Renamed only
+User"). Note "Dexcom Share" is also literally the name of Dexcom's own upstream sharing feature/API
+that this app polls (see the Pairing and Units sections above, both of which use "Dexcom Share" to
+mean *that* upstream service, not this app) — so the app is now name-identical to the very Dexcom
+service it's a third-party client for. **This is deliberate and guideline-compliant, not a concern:**
+Homey's own [App Store guidelines](https://apps.developer.homey.app/app-store/guidelines.md) direct
+third-party brand-app developers to *"use the brand name for your app"* (and forbid using a *company*
+name instead), so naming a Dexcom Share client "Dexcom Share" is exactly what Homey asks for — there
+is no official-vs-unofficial distinction or verification step in those guidelines. Dexcom's own
+official companion app for viewing someone else's data is separately called "Dexcom Follow", and
+`pair/login.html`'s copy still correctly refers to *that* real Dexcom product by that name, unrelated
+to whatever this app calls itself. Renamed only
 the two display-name strings and copy that directly echoes them — did **not** rename the `follower`
 driver id/folder, the `DexcomFollowApp` class, `driver_id=follower` flow-card filters, or the
 "Dexcom Share account"/"Glucose unit" *upstream-service* terminology used correctly elsewhere in
@@ -578,13 +581,33 @@ rasterized from the SVG): `assets/images/*.png` are green-on-white, `drivers/fol
 images/*.png` are white-on-`#00B000` (a solid brand tile), mirroring chargeiq's own split between
 light app-store images and a brand-coloured device tile.
 
-**Still placeholders:** `widgets/glucose-dashboard/preview-{light,dark}.png` — real widget
-screenshots (e.g. via the preview harness above) should replace these before publishing.
+**Using Dexcom's own logo is deliberate and guideline-compliant, not a trademark liability.** Homey's
+[App Store guidelines](https://apps.developer.homey.app/app-store/guidelines.md) tell third-party
+brand-app developers *"If your app supports a specific brand, use the company's brand icon"* — so the
+traced Dexcom dot mark is exactly what Homey asks a Dexcom client to ship, the same way the name
+"Dexcom Share" is (see the Localization section's rename note). No distinct/original mark is needed
+or wanted here.
 
-**Trademark, worth flagging before publishing:** this is now Dexcom's actual logo *and* (per the
-Localization section's own rename note) a name identical to Dexcom's own Share feature, on an
-unofficial third-party client. That compounds the concern already recorded there rather than being
-a separate one — a distinct mark would defuse both at once.
+**App Store image-guideline gaps (audited against the guidelines above — dimensions all pass, content
+does not):**
+- **`assets/images/*.png` (app images, green-on-white) will be rejected as-is.** The guidelines
+  prohibit app images that are *"logos only"* or *"single flat shapes on monochrome/transparent
+  backgrounds"* — the current green-mark-on-white is exactly that. App images are meant to be a
+  *"visually appealing image that represents the purpose of your app"* (a glucose dashboard scene,
+  say), not the mark again. The brand *icon* rule above is about `icon.svg`, not these.
+- **`drivers/follower/assets/images/*.png` (device tile, white-on-`#00B000`) will be rejected as-is.**
+  Driver images must have *"a white background and a recognizable picture of the device"*, and may
+  **not** reuse the app icon/image — the current brand tile is neither white-background nor a device
+  picture. Complicated here by this being a *virtual* device (a Dexcom Share account, no hardware),
+  so "the device" has to be represented by something evocative (a CGM sensor/receiver, or a
+  glucose-tile illustration) on white. **NB the chargeiq split this was modeled on is not a
+  precedent to trust for App Store readiness** — mirroring its light-image/brand-tile approach is
+  what produced both rejections.
+- **`widgets/glucose-dashboard/preview-{light,dark}.png` are still the skeleton `homey app create`
+  rocket** (and the "dark" one isn't even dark). They must be real renders of the glucose widget in
+  each theme, transparent background, no text/screenshot chrome — produce them from the
+  `test/widget-preview.html` harness (see the Widget section). This is the one image item unblocked
+  regardless of any branding decision, since the widget renders identically whatever the app is named.
 
 ## Testing
 Pure logic in `lib/` gets `node:test` coverage (mirrors chargeiq's philosophy — thin Homey adapters
