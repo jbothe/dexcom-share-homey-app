@@ -558,35 +558,48 @@ the exact ordering of `onSettings`'s resolution vs. Homey's own persistence of `
 above) — untested by design, same as the rest of the thin Homey adapters (see Testing).
 
 ## Art
-**The app/device mark is Dexcom's own dot logo**, traced from a supplied 480x480 PNG rather than
-drawn freehand: six circles, mirror-symmetric about the vertical axis — four large (r=34.5 in source
-px) on a rhombus, two small (r=23.0, *exactly* 2/3 the large radius) flanking the bottom. Those
-numbers were measured off the source by connected-component analysis (centroid + area-derived
-radius), then regularised to enforce the symmetry the original clearly intends, so the geometry in
-`assets/icon.svg` is reproducible rather than eyeballed — re-derive the same way if the mark is ever
-re-traced, don't hand-tweak the numbers. `brandColor` (`#00B000`) is the source logo's own green,
-sampled as the modal colour of *core* green pixels (those whose eight neighbours are also green,
-which excludes the antialiased rim — 95.9% of them are exactly `#00B000`, pure green, zero red/blue).
+**The app icon (`assets/icon.svg`) is Dexcom's own wordmark** — the supplied `dexcom.svg` brand
+logo, recoloured black and placed on the 960x960 canvas Homey requires, with ~10% (96px) breathing
+room on the left/right and centred vertically. The original 372x55 wordmark paths are kept verbatim;
+a nested `<g transform>` lifts them out of their exported `translate(-289,-417.03)` offset, scales
+them to 768px wide (`768/372`), and centres the result — the two magic numbers in that transform
+(`translate(96, 423.226)`) are the L/R margin and the vertical-centring gap `(960 - 55*scale)/2`, so
+re-derive them the same way if the canvas or margin ever changes rather than hand-nudging. Verified
+by rendering the file in a square browser viewport (symmetric margins, vertically centred).
+`brandColor` (`#56B146`) is that same wordmark SVG's own `fill` green, moved into the manifest so
+Homey can tint the black icon with it — replacing the earlier `#00B000` (see the dot-mark note
+below). Homey's guidelines tell a brand app to ship the brand's own icon (see the compliance note
+further down), so using the Dexcom wordmark here is deliberate.
 
-Both `assets/icon.svg` and `drivers/follower/assets/icon.svg` are `fill="#000000"` on transparent,
-per the same Homey convention every `assets/capabilities/*.svg` and chargeiq's own icons follow —
-Homey tints the icon itself, so the green deliberately lives *only* in `brandColor`, not in the icon
-markup. The driver icon is picked up by **filesystem convention** (`drivers/<id>/assets/icon.svg`);
-there is no `icon` key in `driver.compose.json` and `app.json`'s `drivers[].icon` stays `null` —
-that's correct and matches chargeiq exactly, so don't "fix" that null.
+**The driver icon (`drivers/follower/assets/icon.svg`) is Dexcom's *dot* mark** — a distinct glyph
+from the app icon (Homey's guidelines say a driver icon should not reuse the app icon, so the
+wordmark-vs-dots split is a feature, not an oversight). Traced from a supplied 480x480 PNG rather
+than drawn freehand: six circles, mirror-symmetric about the vertical axis — four large (r=34.5 in
+source px) on a rhombus, two small (r=23.0, *exactly* 2/3 the large radius) flanking the bottom,
+measured by connected-component analysis (centroid + area-derived radius) then regularised to
+enforce the symmetry the original intends, so it's reproducible — re-derive the same way if
+re-traced, don't hand-tweak. Both icons are `fill="#000000"` on transparent, per the same Homey
+convention every `assets/capabilities/*.svg` follows (Homey tints the icon, so the green lives only
+in `brandColor`). The driver icon is picked up by **filesystem convention**
+(`drivers/<id>/assets/icon.svg`); there is no `icon` key in `driver.compose.json` and `app.json`'s
+`drivers[].icon` stays `null` — that's correct and matches chargeiq exactly, so don't "fix" that null.
 
 The raster images are generated (Pillow, 4x supersampled + LANCZOS — the note about no SVG tooling
-being available still holds, so they are drawn directly from the same measured geometry rather than
-rasterized from the SVG): `assets/images/*.png` are green-on-white, `drivers/follower/assets/
-images/*.png` are white-on-`#00B000` (a solid brand tile), mirroring chargeiq's own split between
-light app-store images and a brand-coloured device tile.
+being available still holds, so they are drawn from the same measured *dot-mark* geometry rather than
+rasterized from any SVG): `assets/images/*.png` are the dots green-on-white, `drivers/follower/assets/
+images/*.png` white-on-`#00B000` (a solid tile). That `#00B000` is the *dot logo's* own green (sampled
+as the modal core-green pixel — 95.9% exactly `#00B000`), and it **no longer matches the app's
+`brandColor` (`#56B146`, from the wordmark)** — a mismatch that only matters if these rasters are kept.
+They aren't: both sets fail the App Store *content* rules regardless (see the image-guideline gaps
+below) and are placeholders to redo, so the `#00B000`/`#56B146` split isn't worth reconciling until
+they are.
 
 **Using Dexcom's own logo is deliberate and guideline-compliant, not a trademark liability.** Homey's
 [App Store guidelines](https://apps.developer.homey.app/app-store/guidelines.md) tell third-party
-brand-app developers *"If your app supports a specific brand, use the company's brand icon"* — so the
-traced Dexcom dot mark is exactly what Homey asks a Dexcom client to ship, the same way the name
-"Dexcom Share" is (see the Localization section's rename note). No distinct/original mark is needed
-or wanted here.
+brand-app developers *"If your app supports a specific brand, use the company's brand icon"* — so
+shipping Dexcom's own wordmark as the app icon (and its dot mark as the driver icon) is exactly what
+Homey asks a Dexcom client to ship, the same way the name "Dexcom Share" is (see the Localization
+section's rename note). No distinct/original mark is needed or wanted here.
 
 **App Store image-guideline gaps (audited against the guidelines above — dimensions all pass, content
 does not):**
