@@ -82,9 +82,9 @@
       },
       {
         "title": {
-          "en": "Glucose became high",
-          "de": "Glukose wurde hoch",
-          "nl": "Glucose werd hoog"
+          "en": "Glucose becomes high",
+          "de": "Glukose wird hoch",
+          "nl": "Glucose wordt hoog"
         },
         "tokens": [
           {
@@ -117,9 +117,9 @@
       },
       {
         "title": {
-          "en": "Glucose became low",
-          "de": "Glukose wurde niedrig",
-          "nl": "Glucose werd laag"
+          "en": "Glucose becomes low",
+          "de": "Glukose wird niedrig",
+          "nl": "Glucose wordt laag"
         },
         "tokens": [
           {
@@ -204,9 +204,9 @@
       },
       {
         "title": {
-          "en": "Glucose became urgent low",
-          "de": "Glukose wurde dringend niedrig",
-          "nl": "Glucose werd urgent laag"
+          "en": "Glucose becomes urgent low",
+          "de": "Glukose wird dringend niedrig",
+          "nl": "Glucose wordt urgent laag"
         },
         "tokens": [
           {

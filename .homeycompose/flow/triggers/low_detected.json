@@ -1,8 +1,8 @@
 {
   "title": {
-    "en": "Glucose became low",
-    "de": "Glukose wurde niedrig",
-    "nl": "Glucose werd laag"
+    "en": "Glucose becomes low",
+    "de": "Glukose wird niedrig",
+    "nl": "Glucose wordt laag"
   },
   "tokens": [
     { "name": "glucose", "type": "number", "title": { "en": "Glucose", "de": "Glukose", "nl": "Glucose" } },

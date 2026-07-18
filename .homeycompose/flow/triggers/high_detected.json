@@ -1,8 +1,8 @@
 {
   "title": {
-    "en": "Glucose became high",
-    "de": "Glukose wurde hoch",
-    "nl": "Glucose werd hoog"
+    "en": "Glucose becomes high",
+    "de": "Glukose wird hoch",
+    "nl": "Glucose wordt hoog"
   },
   "tokens": [
     { "name": "glucose", "type": "number", "title": { "en": "Glucose", "de": "Glukose", "nl": "Glucose" } },
