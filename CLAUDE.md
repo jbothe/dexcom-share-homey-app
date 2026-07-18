@@ -58,9 +58,10 @@ was masking it). It affects any TypeScript Homey app whose tsconfig extends a pa
 "simplify" those install steps back out of `homey-app-validate.yml` / `homey-app-publish.yml`.
 - `homey-app-validate.yml` — every `push`/`pull_request`, at **`level: verified`** (see Commands:
   stricter than `publish`, and the real gate). Deliberately not downgraded to `publish` to make it
-  pass — `verified` is what the App Store requires anyway, so it is the honest gate.
-  **It does not run `npm test` or `npm run lint`** — the 76 unit tests are not enforced anywhere in
-  CI, only locally. Worth adding.
+  pass — `verified` is what the App Store requires anyway, so it is the honest gate. After `npm ci`
+  it also runs **`npm run lint` then `npm test`** (the 76 unit tests), ahead of the validate action,
+  so a lib/ logic or style regression is enforced in CI and surfaces before a manifest one — the
+  manifest validation alone would not have caught either.
 - `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, cuts a GitHub
   release. It writes `.homeychangelog.json`, so the changelog is maintained *through this workflow*,
   not by hand. Has no compile step of its own, so it needs no install step.

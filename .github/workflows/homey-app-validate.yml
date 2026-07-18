@@ -23,6 +23,12 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # The manifest validation below is only part of the story - the unit tests (lib/ logic) and
+      # lint are enforced here too, since nothing else in CI runs them. Ordered before the validate
+      # action so a logic/style regression surfaces ahead of a manifest one.
+      - run: npm run lint
+      - run: npm test
+
       - uses: athombv/github-action-homey-app-validate@master
         with:
           level: verified
