@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Dexcom pair login preview</title>
+  <style>
+    /* Harness chrome only - never touches the pair screen itself, which renders inside the
+       iframe below from the real, unmodified drivers/follower/pair/login.html (fetched live and
+       patched only with a <link> to homey-mock.css and a stub window.Homey - see the script at
+       the bottom). Dev-only, never shipped: nothing in app.json/driver.compose.json references
+       this file. Same visual chrome convention as test/widget-preview.html. */
+    :root {
+      --bg: #f2f3f7;
+      --surface: #ffffff;
+      --border: #e2e4ea;
+      --text: #1a1d29;
+      --text-muted: #676c7e;
+      --accent: #4f46e5;
+      --accent-text: #ffffff;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 2px rgba(16, 18, 27, 0.04), 0 8px 24px rgba(16, 18, 27, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 18px 20px 60px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .page { max-width: 640px; margin: 0 auto; }
+
+    header { margin-bottom: 24px; }
+    h1 { font-size: 18px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+    header p { font-size: 13px; line-height: 1.5; color: var(--text-muted); margin: 0; }
+
+    section { margin-bottom: 28px; }
+    section > h2 {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-muted); margin: 0 0 10px;
+    }
+
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    button {
+      font: inherit; font-size: 13px; font-weight: 600; color: var(--text);
+      padding: 8px 14px; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: 0 1px 2px rgba(16, 18, 27, 0.03);
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+    }
+    button:hover { border-color: #c8cbd6; background: #fafafe; }
+    button:active { transform: translateY(1px); }
+    button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: #eeecfd; }
+
+    .controls-card {
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 20px;
+    }
+    .controls-card .divider { width: 1px; align-self: stretch; background: var(--border); }
+
+    .preview-card {
+      display: flex; justify-content: center;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 24px;
+    }
+    .frame-wrap { display: inline-block; border: 1px solid #ccc; background: #ffffff; border-radius: 10px; overflow: hidden; }
+    @media (prefers-color-scheme: dark) {
+      .frame-wrap { background: #0b0d12; border-color: #333; }
+    }
+    html[data-theme='light'] .frame-wrap { background: #ffffff; border-color: #ccc; }
+    html[data-theme='dark'] .frame-wrap { background: #0b0d12; border-color: #333; }
+    iframe { display: block; width: 380px; height: 620px; border: 0; }
+
+    .log {
+      font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.6;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: var(--shadow); padding: 12px; max-height: 160px; overflow-y: auto;
+      white-space: pre-wrap; color: var(--text-muted);
+    }
+
+    /* Stand-in for Homey.alert() - a real Homey pairing screen shows its own native modal, which
+       can't be reproduced here (see homey-mock.css's own caveat on undocumented pieces). This is
+       just enough of a dialog to preview *what message* would be shown and *when*, not what it
+       would actually look like on-device. */
+    .alert-overlay {
+      display: none; position: absolute; inset: 0; background: rgba(20, 21, 26, 0.45);
+      align-items: center; justify-content: center; z-index: 5;
+    }
+    .alert-overlay.visible { display: flex; }
+    .alert-box {
+      width: 280px; background: var(--surface); border-radius: var(--radius-sm);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.25); padding: 16px; text-align: center;
+    }
+    .alert-box .kicker { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #d81c1d; margin-bottom: 8px; }
+    .alert-box p { font-size: 13px; line-height: 1.5; color: var(--text); margin: 0 0 12px; }
+    .alert-box button { width: 100%; background: #0082fa; color: #fff; border-color: #0082fa; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Dexcom pair login preview</h1>
+      <p>Dev-only preview tool, not shipped with the app. Loads the real, unmodified
+        <code>drivers/follower/pair/login.html</code> (fetched live) inside an iframe, with a stub
+        <code>window.Homey</code> and <code>test/homey-mock.css</code> patched in so it renders
+        with something resembling Homey's real Style Library. See that CSS file's own comment: the
+        exact visuals are an approximation, not a verified match.</p>
+    </header>
+
+    <div class="controls-card">
+      <div class="row">
+        <button class="theme-btn" data-theme="light">Light</button>
+        <button class="theme-btn" data-theme="dark">Dark</button>
+        <button class="theme-btn" data-theme="">Auto (OS)</button>
+      </div>
+      <div class="divider"></div>
+      <div class="row">
+        <button class="outcome-btn" data-outcome="success">Login succeeds</button>
+        <button class="outcome-btn" data-outcome="error">Login fails</button>
+      </div>
+      <div class="divider"></div>
+      <button id="reload">Reload view</button>
+    </div>
+
+    <section>
+      <div class="preview-card">
+        <div class="frame-wrap" style="position: relative;">
+          <iframe id="widget" title="login pair view"></iframe>
+          <div class="alert-overlay" id="alertOverlay">
+            <div class="alert-box">
+              <div class="kicker">Homey.alert() (approximate)</div>
+              <p id="alertMessage"></p>
+              <button id="alertOk">OK</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Console / bridge log</h2>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+
+  <script>
+    var iframe = document.getElementById('widget');
+    var logEl = document.getElementById('log');
+    var alertOverlay = document.getElementById('alertOverlay');
+    var alertMessage = document.getElementById('alertMessage');
+    var currentTheme = '';
+    var currentOutcome = 'error';
+    var strings = null;
+
+    function log(line) {
+      logEl.textContent += line + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function applyTheme(theme) {
+      currentTheme = theme;
+      if (theme) document.documentElement.setAttribute('data-theme', theme);
+      else document.documentElement.removeAttribute('data-theme');
+      document.querySelectorAll('.theme-btn').forEach(function (btn) {
+        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-theme') === theme));
+      });
+      reload();
+    }
+
+    function applyOutcome(outcome) {
+      currentOutcome = outcome;
+      document.querySelectorAll('.outcome-btn').forEach(function (btn) {
+        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-outcome') === outcome));
+      });
+    }
+
+    // Builds window.Homey.__ from the app's own real locales/en.json (fetched live, not
+    // hand-copied) so preview copy can never drift from what the app actually ships.
+    function translate(key) {
+      var parts = key.split('.');
+      var node = strings;
+      for (var i = 0; i < parts.length; i++) {
+        if (node == null) return key;
+        node = node[parts[i]];
+      }
+      return typeof node === 'string' ? node : key;
+    }
+
+    function buildStubScript() {
+      return '<script>\n'
+        + 'window.Homey = {\n'
+        + '  __: function (key) { return window.parent.__previewTranslate(key); },\n'
+        + '  emit: function (event, data) {\n'
+        + '    window.parent.__previewLog("Homey.emit(" + JSON.stringify(event) + ", " + JSON.stringify(data) + ")");\n'
+        + '    return new Promise(function (resolve, reject) {\n'
+        + '      setTimeout(function () {\n'
+        + '        if (window.parent.__previewOutcome() === "success") resolve();\n'
+        + '        else reject({ message: "Could not sign in to Dexcom Share (simulated failure)." });\n'
+        + '      }, 700);\n'
+        + '    });\n'
+        + '  },\n'
+        + '  showView: function (id) { window.parent.__previewLog("Homey.showView(" + JSON.stringify(id) + ") - not simulated further"); },\n'
+        + '  alert: function (msg, icon) { window.parent.__previewAlert(msg, icon); return Promise.resolve(); }\n'
+        + '};\n'
+        + '<\/script>\n'
+        + '<link rel="stylesheet" href="homey-mock.css" />\n';
+    }
+
+    function reload() {
+      if (!strings) return;
+      fetch('../drivers/follower/pair/login.html', { cache: 'no-store' })
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var patched = html.replace('</head>', buildStubScript() + '</head>');
+          iframe.srcdoc = patched;
+          iframe.onload = function () {
+            var doc = iframe.contentDocument;
+            if (doc && currentTheme) doc.documentElement.setAttribute('data-theme', currentTheme);
+            else if (doc) doc.documentElement.removeAttribute('data-theme');
+          };
+          log('reloaded login.html (outcome=' + currentOutcome + ', theme=' + (currentTheme || 'auto') + ')');
+        });
+    }
+
+    window.__previewTranslate = translate;
+    window.__previewLog = log;
+    window.__previewOutcome = function () { return currentOutcome; };
+    window.__previewAlert = function (msg, icon) {
+      log('Homey.alert(' + JSON.stringify(msg) + ', ' + JSON.stringify(icon) + ')');
+      alertMessage.textContent = msg;
+      alertOverlay.classList.add('visible');
+    };
+
+    document.getElementById('alertOk').addEventListener('click', function () {
+      alertOverlay.classList.remove('visible');
+    });
+
+    document.querySelectorAll('.theme-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { applyTheme(btn.getAttribute('data-theme')); });
+    });
+    document.querySelectorAll('.outcome-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { applyOutcome(btn.getAttribute('data-outcome')); });
+    });
+    document.getElementById('reload').addEventListener('click', reload);
+
+    fetch('../locales/en.json', { cache: 'no-store' })
+      .then(function (res) { return res.json(); })
+      .then(function (json) {
+        strings = json;
+        applyTheme('');
+        applyOutcome('error');
+      });
+  </script>
+</body>
+</html>

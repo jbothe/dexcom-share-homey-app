@@ -280,12 +280,14 @@ repairing.
 
 **The credentials that must be entered are the sensor-wearer's own Dexcom account, not a separate
 "follower" login** — confirmed against a real account: authenticating as the diabetic's own Dexcom
-account (Share turned on in their G6/G7 app) returns data, while authenticating as a distinct
-account only ever used in the Dexcom Follow app to *view* that data signs in successfully (a valid
-login, so `driver.ts`'s `getLatestGlucoseReading() === null` check can't distinguish it from "no
-recent sensor data yet") but returns no readings — Dexcom's Share API only serves data to the
-account that owns the sensor session. `login.html`'s copy calls this out explicitly for exactly this
-reason.
+account (Share turned on in their G6/G7/ONE/ONE+ app) returns data, while authenticating as a
+distinct account only ever used in the Dexcom Follow app to *view* that data signs in successfully
+(a valid login, so `driver.ts`'s `getLatestGlucoseReading() === null` check can't distinguish it
+from "no recent sensor data yet") but returns no readings — Dexcom's Share API only serves data to
+the account that owns the sensor session. `login.html`'s copy no longer spells this out explicitly
+(the earlier "A separate Dexcom Follow login won't work…" sentence was cut for brevity) — the
+constraint itself is unchanged and still enforced the same way by `driver.ts`, just no longer
+called out in the pair screen's own text.
 
 **The `login` pair step deliberately declares no `"navigation"` in `driver.compose.json`.**
 Declaring `navigation.next` on a pair step is what makes Homey render its own default chrome
@@ -304,17 +306,33 @@ the login screen. Decided against that UX regression; kept the single custom but
 `login.html` (client-side `console.log`) and `driver.ts` (`this.log`/`this.error`, username masked,
 password never logged) log every step of the pairing handshake for troubleshooting.
 
-**`login.html`'s styling uses Homey's own design tokens** (`var(--homey-color-blue-500, …)` etc.,
-same values as `test/homey-mock.css`), not hardcoded colors, so the screen matches Homey's real
-brand palette and the user's actual in-app theme. Unlike the widget, it is **not confirmed that
-Homey injects these variables into pair views** the same way it does for widgets/settings (see "Not
-yet verified") — every `var()` call carries an explicit static light-mode fallback, so the screen
-still looks Homey-authentic even if nothing is actually injected. Deliberately no
-`prefers-color-scheme` override of those variable names: if Homey *does* inject a real (possibly
-dark) value, a same-specificity local override keyed off the OS theme could clobber it, exactly the
-risk the widget's own styling comment already flags for the same variable set. The Continue button
-sits in a `.footer` pinned to the bottom via `margin-top: auto` inside a flex column, echoing the
-placement (though not the actual chrome) of Homey's own default pairing "Next" button.
+**`login.html`'s styling now uses Homey's own Style Library** (`.homey-form`/`.homey-form-group`/
+`.homey-form-label`/`.homey-form-input`/`.homey-form-select`, `.homey-header`/`.homey-title`/
+`.homey-subtitle`, `.homey-button-primary-full`) instead of the hand-approximated `var(--homey-*)`
+tokens with static fallbacks it used before — [documented](https://apps.developer.homey.app/advanced/custom-views/html-and-css-styling)
+as available on Homey Cloud and Homey Pro since firmware v8.1.0 (well under this app's own
+`>=12.4.0` floor), and applied to custom pair/settings views without an explicit stylesheet
+`<link>`, the same way this file's existing `Homey.emit()`/`Homey.showView()`/`Homey.__()` calls
+already work with no `<script src="/homey.js">` tag of its own. This directly resolves the old
+"not confirmed that Homey injects into pair views" uncertainty (see "Not yet verified") rather than
+working around it: colors, spacing, and dark mode now come from Homey's own real in-app theme —
+the same native source the widget's own `"device"` autocomplete setting picker already draws from
+— not a guessed palette that may or may not have matched whatever Homey actually injected. The
+inline error box is gone too, replaced by `Homey.alert(message, 'error')` — Homey's own native
+alert dialog is how a real pairing screen is meant to surface a failure, so there's no color/layout
+guessing left for that state either. Only the page's own structural chrome — the sticky-bottom
+footer holding the Continue button (`margin-top: auto` inside a flex column), a pattern the Style
+Library doesn't document — is still hand-rolled CSS, and it's deliberately layout-only now: no
+colors, borders, or fonts guessed there anymore. It still echoes the placement (though not the
+actual chrome) of Homey's own default pairing "Next" button.
+
+**`.homey-header { border-bottom: none; box-shadow: none; }` overrides a divider Homey's real,
+native Style Library renders under the title/subtitle block on-device** — per an on-device
+observation, not something reproducible or independently re-confirmed in this repo's own tooling
+(`test/homey-mock.css`'s approximation never had one, since Homey's docs only publish the Style
+Library's class *names*, not its exact CSS — see that file's own caveat). If a future firmware
+changes or removes that native divider, this override just becomes a no-op, not a visible bug —
+low risk either way.
 
 ## Widget (`widgets/glucose-dashboard/`)
 **One widget instance = one follower device, picked via the widget's own `"device"` autocomplete
@@ -521,10 +539,15 @@ Two distinct mechanisms, matching where Homey actually looks each one up:
   the `Homey.__('dotted.key.path', tags)` function Homey injects into both pair views and widgets.
   `login.html` calls it directly (pair views get a synchronous global `Homey`, same as this file's
   pre-existing direct `Homey.emit()`/`Homey.showView()` calls) and assigns the results to the
-  form's labels/button/error text once at load. The instructions paragraph's translated string
-  carries a literal `<strong>` tag around "person wearing the sensor" and is assigned via
-  `innerHTML` (safe: static translator-authored markup, not user input) — translators must keep
-  that tag if they ever edit the copy.
+  form's labels/button/error text once at load. The instructions string's translated markup
+  carries a literal `<strong>` tag around "person wearing the sensor" plus two `<p>` tags (one
+  per paragraph — the second covers enabling Dexcom Share and configuring a follower) and is
+  assigned via `innerHTML` (safe: static translator-authored markup, not user input) —
+  translators must keep that shape if they ever edit the copy. `#instructionsText` in
+  `login.html` is a `<div>`, not a `<p>`, specifically so it can legally hold those two
+  block-level `<p>` children — `.homey-subtitle p + p` in that file's own `<style>` block adds
+  the paragraph gap, since Homey's `.homey-subtitle` class is documented as single-line subtitle
+  text, not multi-paragraph body copy.
 
   The widget can't call `Homey.__()` from inside its `GLUCOSE-LOGIC` block: that block must stay
   dependency-free (see Widget section — `test/glucose-widget.test.ts` evaluates it standalone via
@@ -598,9 +621,11 @@ would now work. **The badge's `text-box` centering fix is on-device-reported but
 on-device-confirmed**: the bottom-heavy pill was only ever observed on a real Homey (never
 reproducible in the harness, see the Widget section), so whether the fix actually lands there — and
 whether that client is even new enough to support `text-box` at all — still needs a look at the real
-dashboard. Still otherwise unconfirmed on-device: does Homey actually inject its
-`var(--homey-*)` design tokens into a pair view the way it documents for widgets (see the
-Pairing section's styling bullet), Flow-card firing against a live paired device, and the
+dashboard. Still otherwise unconfirmed on-device: whether `login.html`'s Homey Style Library
+classes (`.homey-form-*`/`.homey-button-*`/`.homey-header`, see the Pairing section's styling
+bullet) actually render as documented on a real pair view — the base `Homey` client bridge
+(`.emit()`/`.showView()`/`.__()`) is already confirmed working there, just not this specific
+styling yet — Flow-card firing against a live paired device, and the
 `dexcom-share-client` library's real-world behavior against the live Dexcom Share API (error shapes,
 actual session-expiry timing) — the timestamp workaround (see the poller bullet above) was cross-
 checked against `pydexcom`'s reference parsing rather than a live account, since none was available

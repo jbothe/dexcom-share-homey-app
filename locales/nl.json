@@ -1,8 +1,8 @@
 {
   "pair": {
     "login": {
-      "title": "Dexcom verbinden",
-      "instructions": "Gebruik het Dexcom-account van de <strong>persoon die de sensor draagt</strong> — dezelfde inloggegevens die in de G6/G7-app worden gebruikt, met Share ingeschakeld. Een apart Dexcom Follow-account werkt niet: het inloggen lukt wel, maar er komen geen glucosegegevens binnen.",
+      "title": "Dexcom-account verbinden",
+      "instructions": "<p>Gebruik het Dexcom-account van de <strong>persoon die de sensor draagt</strong> (dezelfde inloggegevens die in de G6/G7/ONE/ONE+-app worden gebruikt).</p><p>Dexcom Share moet in die app zijn ingeschakeld en zijn ingesteld met minstens één actieve volger.</p>",
       "usernameLabel": "Gebruikersnaam, e-mail of telefoonnummer",
       "passwordLabel": "Wachtwoord",
       "regionLabel": "Regio",

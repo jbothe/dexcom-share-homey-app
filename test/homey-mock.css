@@ -268,3 +268,90 @@ body { font-family: -apple-system, Roboto, Arial, Helvetica, sans-serif; }
 .homey-table-striped tbody tr:nth-child(odd) {
   background: var(--homey-color-mono-025);
 }
+
+/* Pair/settings Style Library approximation (`.homey-header`/`.homey-title`/`.homey-subtitle`,
+   `.homey-form-*`, `.homey-button-*`), for test/pair-login-preview.html only.
+
+   Unlike everything above this point, Homey's own docs
+   (https://apps.developer.homey.app/advanced/custom-views/html-and-css-styling) only document
+   these class *names* and which HTML they attach to - no exact CSS (no published padding,
+   border-radius, colors-per-class, or spinner appearance for `.is-loading`). Every rule below is
+   therefore a best-effort visual approximation built from the same documented token palette
+   already defined above (`--homey-su-*`, `--homey-color-*`, the font-size/weight/line-height
+   scale), not a verified match to Homey's real, auto-injected Style Library. Treat this preview
+   as directional only - real confirmation still needs a real Homey Pro (see CLAUDE.md's
+   "Not yet verified" section, which explicitly flags this exact gap). */
+.homey-header { margin: 0 0 var(--homey-su-5); }
+.homey-title {
+  margin: 0 0 var(--homey-su-2);
+  font-size: var(--homey-font-size-xlarge);
+  font-weight: var(--homey-font-weight-bold);
+  line-height: var(--homey-line-height-xlarge);
+  color: var(--homey-text-color);
+}
+.homey-subtitle {
+  margin: 0;
+  font-size: var(--homey-font-size-default);
+  line-height: var(--homey-line-height-default);
+  color: var(--homey-text-color-light);
+}
+
+.homey-form-group { margin-bottom: var(--homey-su-4); }
+.homey-form-label {
+  display: block;
+  margin-bottom: var(--homey-su-1);
+  font-size: var(--homey-font-size-small);
+  font-weight: var(--homey-font-weight-medium);
+  color: var(--homey-text-color-light);
+}
+.homey-form-input,
+.homey-form-select {
+  display: block;
+  width: 100%;
+  padding: var(--homey-su-3);
+  font-size: var(--homey-font-size-default);
+  font-family: inherit;
+  color: var(--homey-text-color);
+  background: var(--homey-color-mono-000);
+  border: 1px solid var(--homey-color-mono-200);
+  border-radius: var(--homey-border-radius-default);
+}
+.homey-form-input:focus,
+.homey-form-select:focus {
+  outline: none;
+  border-color: var(--homey-color-blue-500);
+  box-shadow: 0 0 0 3px var(--homey-color-blue-100);
+}
+
+.homey-button-primary-full {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: var(--homey-su-3) var(--homey-su-4);
+  font-size: var(--homey-font-size-default);
+  font-weight: var(--homey-font-weight-medium);
+  font-family: inherit;
+  color: var(--homey-text-color-white);
+  background: var(--homey-color-blue-500);
+  border: none;
+  border-radius: var(--homey-border-radius-default);
+  cursor: pointer;
+}
+.homey-button-primary-full:hover { background: var(--homey-color-blue-600); }
+.homey-button-primary-full:disabled { background: var(--homey-color-mono-300); cursor: default; }
+/* Spinner appearance is pure guesswork (undocumented) - a plausible, common "loading button"
+   treatment: fade the label and overlay a spinning ring, rather than a literal rendering of
+   whatever Homey's real .is-loading actually does. */
+.homey-button-primary-full.is-loading { color: transparent; }
+.homey-button-primary-full.is-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 18px; height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: homey-mock-spin 0.7s linear infinite;
+}
+@keyframes homey-mock-spin { to { transform: rotate(360deg); } }

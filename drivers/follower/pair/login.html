@@ -5,132 +5,81 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     /*
-      Styled with Homey's own design tokens (var(--homey-*)) rather than hardcoded colors, the
-      same approach widgets/glucose-dashboard/public/index.html uses - see that file's own
-      comment for why (matches the real Homey brand palette and the user's actual in-app theme
-      instead of a locally-guessed one). Unlike the widget, it is NOT confirmed that Homey
-      injects this variable set into *pair* views the same way it does for widgets/settings (see
-      CLAUDE.md's "Not yet verified") - every var() call below therefore carries an explicit
-      static fallback (Homey's documented light-mode hex, same values as test/homey-mock.css)
-      so the screen still looks Homey-authentic even if nothing is actually injected here.
-      Deliberately no prefers-color-scheme override of these same variable names: if Homey DOES
-      inject the real (possibly dark) value, a same-specificity local override could win the
-      cascade and clobber it based on the OS theme rather than the user's actual in-app Homey
-      theme, which the widget file's own comment already flags as the wrong signal to key off.
+      Styled with Homey's own Style Library (`.homey-form-*` / `.homey-button-*` / `.homey-header`
+      classes - see https://apps.developer.homey.app/advanced/custom-views/html-and-css-styling)
+      rather than the hand-approximated `var(--homey-*)` tokens with static fallbacks this file
+      used until now. The Style Library is Homey's own real, themed component set, documented as
+      available on Homey Cloud and Homey Pro since firmware v8.1.0 (well under this app's own
+      >=12.4.0 compatibility floor) and applied to custom pair/settings views without an explicit
+      stylesheet <link> - matching how this file already calls Homey.emit()/Homey.showView()/
+      Homey.__() with no <script src="/homey.js"> tag of its own (that bridge is confirmed working
+      on a real device already, see CLAUDE.md's Not-yet-verified section; only this file's styling
+      was ever the unconfirmed part). Switching to it resolves that uncertainty outright instead of
+      working around it: colors, spacing, and dark mode now come from Homey's own real in-app
+      theme, the same way the widget's native "device" autocomplete setting picker already does,
+      rather than a guessed palette that may or may not have matched whatever Homey actually
+      injects. Only the page's own structural chrome - the sticky-bottom footer holding the
+      Continue button, a pattern the Style Library doesn't document - is still hand-rolled CSS
+      below, and it is deliberately layout-only now: no colors, borders, or fonts guessed here.
     */
     * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: -apple-system, "Segoe UI", Roboto, Arial, Helvetica, sans-serif;
-      color: var(--homey-text-color, #1c1c1c);
-      background: var(--homey-background-color, #ffffff);
-    }
+    html, body { height: 100%; margin: 0; }
     .page { display: flex; flex-direction: column; min-height: 100%; }
     .content { flex: 1 1 auto; padding: 20px 20px 8px; }
-
-    h2 {
-      font-size: var(--homey-font-size-large, 20px);
-      font-weight: var(--homey-font-weight-medium, 500);
-      line-height: var(--homey-line-height-large, 28px);
-      margin: 0 0 8px;
-    }
-    p {
-      font-size: var(--homey-font-size-small, 14px);
-      line-height: 1.5;
-      color: var(--homey-text-color-light, #7a7a7f);
-      margin: 0;
-    }
-
-    label {
-      display: block;
-      font-size: var(--homey-font-size-small, 13px);
-      font-weight: var(--homey-font-weight-medium, 500);
-      color: var(--homey-text-color-light, #7a7a7f);
-      margin: 18px 0 6px;
-    }
-    input, select {
-      width: 100%;
-      font-size: var(--homey-font-size-default, 16px);
-      padding: 11px 12px;
-      border: 1px solid var(--homey-color-mono-200, #c8c8d0);
-      border-radius: var(--homey-border-radius-default, 8px);
-      color: var(--homey-text-color, #1c1c1c);
-      background: var(--homey-color-mono-000, #ffffff);
-    }
-    input:focus, select:focus {
-      outline: none;
-      border-color: var(--homey-color-blue-500, #0082fa);
-      box-shadow: 0 0 0 3px var(--homey-color-blue-100, #cce6fe);
-    }
-
-    /* Fixed action bar at the bottom of the screen, same placement as Homey's own default
-       pairing chrome "Next" button (see driver.ts's comment on why this step uses its own
-       button instead of that one) - margin-top: auto pins it to the bottom when content is
-       short, and lets it sit right after the content (still full-width, still blue) if the
-       screen content ever grows tall enough to need scrolling. */
-    .footer {
-      margin-top: auto;
-      padding: 16px 20px;
-      border-top: 1px solid var(--homey-color-mono-100, #dadae2);
-    }
-    button {
-      width: 100%;
-      font-size: var(--homey-font-size-default, 16px);
-      font-weight: var(--homey-font-weight-medium, 500);
-      padding: 13px 14px;
-      border: none;
-      border-radius: var(--homey-border-radius-default, 8px);
-      background: var(--homey-color-blue-500, #0082fa);
-      color: #ffffff;
-      cursor: pointer;
-    }
-    button:hover { background: var(--homey-color-blue-600, #0068c8); }
-    button:disabled { background: var(--homey-color-mono-300, #b1b1b9); cursor: default; }
-
-    .error {
-      margin-top: 16px;
-      padding: 10px 12px;
-      border-radius: var(--homey-border-radius-default, 8px);
-      background: var(--homey-color-red-050, #fce9e9);
-      color: var(--homey-text-color-danger, #d81c1d);
-      font-size: var(--homey-font-size-small, 13px);
-      line-height: 1.4;
-      display: none;
-    }
+    /* Homey's native `.homey-header` renders its own divider under the title/subtitle block on
+       a real device - not reproducible in test/homey-mock.css's approximation (see that file's
+       own caveat: it only has the Style Library's class *names* to go on, not its exact CSS), so
+       this was only ever visible on-device. Overridden off here per that on-device observation;
+       not independently re-confirmed in this repo's own tooling. */
+    .homey-header { border-bottom: none; box-shadow: none; }
+    /* .homey-subtitle is documented as a single line of subtitle text, not multi-paragraph body
+       copy, so the paragraph gap between the two <p> tags inside #instructionsText (see below)
+       is this file's own structural spacing, not something the Style Library provides. */
+    .homey-subtitle p { margin: 0; }
+    .homey-subtitle p + p { margin-top: 12px; }
+    /* Echoes the placement (though not the actual chrome) of Homey's own default pairing "Next"
+       button - see driver.ts's comment on why this step uses its own button instead of that one.
+       margin-top: auto pins it to the bottom when content is short, and lets it sit right after
+       the content if the screen ever grows tall enough to need scrolling. */
+    .footer { margin-top: auto; padding: 16px 20px; }
   </style>
 </head>
 <body>
-  <form id="loginForm" class="page">
+  <form id="loginForm" class="page homey-form">
     <div class="content">
-      <h2 id="titleText"></h2>
-      <p id="instructionsText"></p>
+      <header class="homey-header">
+        <h1 class="homey-title" id="titleText"></h1>
+        <div class="homey-subtitle" id="instructionsText"></div>
+      </header>
 
-      <label id="usernameLabel" for="username"></label>
-      <input id="username" type="text" autocomplete="username" required />
+      <div class="homey-form-group">
+        <label class="homey-form-label" id="usernameLabel" for="username"></label>
+        <input class="homey-form-input" id="username" type="text" autocomplete="username" required />
+      </div>
 
-      <label id="passwordLabel" for="password"></label>
-      <input id="password" type="password" autocomplete="current-password" required />
+      <div class="homey-form-group">
+        <label class="homey-form-label" id="passwordLabel" for="password"></label>
+        <input class="homey-form-input" id="password" type="password" autocomplete="current-password" required />
+      </div>
 
-      <label id="regionLabel" for="region"></label>
-      <select id="region">
-        <option id="regionUs" value="us"></option>
-        <option id="regionOus" value="ous"></option>
-        <option id="regionJp" value="jp"></option>
-      </select>
-
-      <div id="error" class="error"></div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" id="regionLabel" for="region"></label>
+        <select class="homey-form-select" id="region">
+          <option id="regionUs" value="us"></option>
+          <option id="regionOus" value="ous"></option>
+          <option id="regionJp" value="jp"></option>
+        </select>
+      </div>
     </div>
 
     <div class="footer">
-      <button id="submitButton" type="submit"></button>
+      <button id="submitButton" type="submit" class="homey-button-primary-full"></button>
     </div>
   </form>
 
   <script type="application/javascript">
     var form = document.getElementById('loginForm');
     var button = document.getElementById('submitButton');
-    var errorEl = document.getElementById('error');
 
     // Diagnostics for pairing issues: this view's own console (Homey app run's pairing
     // window devtools, or the mobile app's remote debugger) is the only visibility into what
@@ -161,7 +110,9 @@
     };
     document.getElementById('titleText').textContent = t.title;
     // innerHTML, not textContent: the translated string carries a <strong> tag around the
-    // "person wearing the sensor" phrase (static, non-user-controlled), same as the source copy.
+    // "person wearing the sensor" phrase plus two <p> tags for the two-paragraph copy (static,
+    // non-user-controlled), same shape as the source copy - #instructionsText is a <div>, not a
+    // <p>, specifically so it can legally hold those two block-level <p> children.
     document.getElementById('instructionsText').innerHTML = t.instructions;
     document.getElementById('usernameLabel').textContent = t.usernameLabel;
     document.getElementById('passwordLabel').textContent = t.passwordLabel;
@@ -173,8 +124,8 @@
 
     form.addEventListener('submit', function (event) {
       event.preventDefault();
-      errorEl.style.display = 'none';
       button.disabled = true;
+      button.classList.add('is-loading');
       button.textContent = t.connecting;
 
       var payload = {
@@ -198,9 +149,12 @@
       }).catch(function (err) {
         diag('login rejected', (err && err.message) || err);
         button.disabled = false;
+        button.classList.remove('is-loading');
         button.textContent = t.continueLabel;
-        errorEl.textContent = (err && err.message) || t.genericError;
-        errorEl.style.display = 'block';
+        // Homey's own native alert dialog, not a hand-styled inline error box - same reasoning
+        // as the rest of this file's move to the Style Library: this is exactly how a real
+        // Homey pairing screen is meant to surface a failure, no color/layout guessing needed.
+        Homey.alert((err && err.message) || t.genericError, 'error');
       });
     });
   </script>
