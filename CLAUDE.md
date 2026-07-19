@@ -391,13 +391,17 @@ its device's poller may have already finished seconds later.
 **Pull-based fallback (`widgets/glucose-dashboard/api.js`'s `getState` endpoint), kept alongside
 the realtime push as extra insurance, not removed once the id-mismatch bug was actually fixed.**
 The widget does three things on load: subscribe to the realtime channel (above), immediately call
-`Homey.api('GET', '/state?id=' + boundDeviceId, {})` once, and re-call it on its own 30s
-`pollTimer` regardless of whether any realtime push ever arrives. Handled by
-`DexcomFollowApp.getWidgetStateForDeviceId()`, keyed by the same `data.id` the autocomplete setting
-uses — no separate id-translation step to go wrong here. **Confirmed working on a real device**
-(`[widget-api] getState lookup` matched, widget rendering live data). That lookup only logs on a
-*miss* (`[widget-api] getState: no device found for <id>` - e.g. the widget's bound follower was
-since removed) rather than on every call, since a successful match on a ~30s poll forever would
+`Homey.api('GET', '/state?id=' + boundDeviceId, {})` once, and re-call it on its own 60s
+`pollTimer` regardless of whether any realtime push ever arrives. 60s deliberately matches
+`startWidgetBroadcast`'s own 60s heartbeat rather than polling faster than the app itself ever
+broadcasts (an earlier 30s value polled the app twice as often as it could possibly have anything
+new to say) — still leaves 3 poll attempts inside the 180s staleness window (see below) if the
+realtime channel is fully dead, the same 3x margin the staleness threshold itself assumes. Handled
+by `DexcomFollowApp.getWidgetStateForDeviceId()`, keyed by the same `data.id` the autocomplete
+setting uses — no separate id-translation step to go wrong here. **Confirmed working on a real
+device** (`[widget-api] getState lookup` matched, widget rendering live data). That lookup only
+logs on a *miss* (`[widget-api] getState: no device found for <id>` - e.g. the widget's bound
+follower was since removed) rather than on every call, since a successful match on a ~60s poll forever would
 just be noise once device-binding itself is no longer in question. The widget's own console still
 logs `Homey.getSettings().device`'s raw value, every realtime push received, and every poll
 result/failure (`[dexcom-widget] ...`, same `diag()` pattern as `pair/login.html`) - kept

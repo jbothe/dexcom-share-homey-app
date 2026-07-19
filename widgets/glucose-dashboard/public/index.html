@@ -523,7 +523,7 @@
     }
 
     var CHECK_MS = 5000;
-    var POLL_MS = 30000; // pull-based resync, independent of the realtime push - see onHomeyReady
+    var POLL_MS = 60000; // pull-based resync, independent of the realtime push - see onHomeyReady
     var STALE_MS = 180000; // dim after ~3 missed 60s broadcasts, then auto-recover
     var lastOkAt = 0;
     var hadData = false;
