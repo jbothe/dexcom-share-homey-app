@@ -213,6 +213,10 @@
       // rather than rescaling to whatever narrow band a given 3h window happened to sit in.
       DEXCOM_MIN_MGDL: 40,
       DEXCOM_MAX_MGDL: 400,
+      // Alternate y-axis top for the 'capped' chartMode (see sparkline's own opts.chartMode and
+      // types.ts's WidgetChartScale) - not derived from anything Dexcom-specific, just the cap
+      // this app's own "capped" chart view uses.
+      CAPPED_MAX_MGDL: 300,
       // Matches DexcomPoller's own getGlucoseReadings(180, 36) window (see CLAUDE.md's
       // Architecture section) - the x-axis is always exactly this wide, anchored to "now"
       // (see sparkline's own opts.nowMs), not to whatever span the actual samples happen to
@@ -293,17 +297,41 @@
         opts = opts || {};
         var W = opts.width || 260;
         var H = opts.height || 90;
+        // Which of the three mutually exclusive y-axis treatments to draw - driven by the bound
+        // device's own widgetChartScale setting (render() passes payload.chartScale through as
+        // opts.chartMode; see types.ts's WidgetChartScale). 'normal' (default, also the value
+        // every device gets until it's changed) is byte-for-byte the original always-40-400-
+        // linear behavior.
+        var mode = opts.chartMode || 'normal'; // 'normal' | 'capped' | 'log'
         var t1 = opts.nowMs != null ? opts.nowMs : Date.now();
         var t0 = t1 - GD.WINDOW_MS;
         if (!history || history.length === 0) return { segments: [], dots: [], zones: [], yTicks: [] };
 
         var domainMin = GD.toDisplay(GD.DEXCOM_MIN_MGDL, units);
-        var domainMax = GD.toDisplay(GD.DEXCOM_MAX_MGDL, units);
+        var domainMax = GD.toDisplay(mode === 'capped' ? GD.CAPPED_MAX_MGDL : GD.DEXCOM_MAX_MGDL, units);
+        var logMin = Math.log(domainMin);
+        var logSpan = Math.log(domainMax) - logMin;
 
-        var toXY = function (t, v) {
+        // Maps one raw mg/dL reading to a y position within [domainMin, domainMax] (converted
+        // to the display unit first). Every mode clamps to the domain edges rather than letting
+        // a value escape the viewport - a no-op for 'normal'/'log' (readings never leave
+        // Dexcom's own 40-400 sensor range), but exactly what pins an above-300 reading to the
+        // top edge in 'capped' mode instead of dropping or overflowing it. 'log' maps the
+        // clamped value through ln() instead of linearly; only the *ratio* of logs matters for
+        // where a point lands (loga(x)/loga(y) is base-invariant), so ln/log2/log10 would all
+        // draw identically here - ln() is used purely because Math.log() is the built-in.
+        var valueY = function (mgdl) {
+          var v = GD.toDisplay(mgdl, units);
+          var vClamped = Math.min(Math.max(v, domainMin), domainMax);
+          var frac = mode === 'log'
+            ? (Math.log(vClamped) - logMin) / logSpan
+            : (vClamped - domainMin) / (domainMax - domainMin);
+          return H - frac * H;
+        };
+
+        var toXY = function (t, mgdl) {
           var x = ((t - t0) / (t1 - t0)) * W;
-          var y = H - ((v - domainMin) / (domainMax - domainMin)) * H;
-          return { x: x, y: y };
+          return { x: x, y: valueY(mgdl) };
         };
         // Samples outside the fixed window are dropped, not just left off-screen - e.g. after
         // a long outage, an old sample would otherwise land at a negative x.
@@ -313,7 +341,7 @@
         // range it landed in rather than one flat color for the whole trace.
         var pts = history
           .filter(function (p) { return p.t >= t0 && p.t <= t1; })
-          .map(function (p) { var xy = toXY(p.t, GD.toDisplay(p.v, units)); return { x: xy.x, y: xy.y, t: p.t, v: p.v }; });
+          .map(function (p) { var xy = toXY(p.t, p.v); return { x: xy.x, y: xy.y, t: p.t, v: p.v }; });
 
         // Same threshold cuts as the shaded zones above, applied to a single reading - a missing
         // threshold just can't push the value below/above it, so classification degrades to
@@ -339,10 +367,8 @@
           });
         });
 
-        var valueY = function (mgdl) {
-          var v = GD.toDisplay(mgdl, units);
-          return H - ((v - domainMin) / (domainMax - domainMin)) * H;
-        };
+        // Reuses the same valueY (mode/log-aware, clamped to the domain) the trace itself uses,
+        // so a zone edge and a reading pinned against it via clamping never disagree.
         // The three thresholds cut the fixed sensor-range domain into four contiguous severity
         // zones, each shaded its own color (see the --spark-zone-* tokens) so a reading's
         // position reads as in/out of range at a glance without decoding the y-axis. A zone is
@@ -380,6 +406,20 @@
     // === GLUCOSE-LOGIC-END ===
 
     var lastPayload = null;
+
+    // Dev-preview-only y-axis override ('normal' | 'capped' | 'log' - see GD.sparkline's own
+    // opts.chartMode and types.ts's WidgetChartScale). The real widget always gets this from the
+    // bound device's own `widgetChartScale` setting via payload.chartScale (see render() below,
+    // and device.ts's getChartScale()/getWidgetSnapshot()) - a widget mapped to a given device
+    // follows that device's own choice, it isn't a widget-level setting. This local var only
+    // matters as a fallback for payloads that don't carry chartScale at all (e.g.
+    // test/widget-preview.html's own preset JSON, which predates this setting), so its own
+    // chart-mode buttons can still flip the view for ad-hoc testing.
+    var chartMode = 'normal';
+    function setChartMode(mode) {
+      chartMode = mode;
+      if (lastPayload) render(lastPayload);
+    }
 
     // Set once onHomeyReady fires (see below) - stays null when this file is driven directly
     // (test/widget-preview.html calls render()/onData() straight, bypassing onHomeyReady
@@ -487,6 +527,9 @@
         lowMgDl: payload.lowMgDl,
         highMgDl: payload.highMgDl,
         nowMs: Date.now(),
+        // payload.chartScale is this device's own widgetChartScale setting (see the comment on
+        // the local chartMode var above) - it wins whenever the payload actually carries it.
+        chartMode: payload.chartScale || chartMode,
       });
       var sparkEl = document.getElementById('spark');
       var zones = (spark.zones || []).map(function (z) {

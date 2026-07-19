@@ -99,7 +99,13 @@
       <div class="row">
         <button class="theme-btn" data-theme="light">Light</button>
         <button class="theme-btn" data-theme="dark">Dark</button>
-        <button class="theme-btn" data-theme="">Auto (OS)</button>
+        <button class="theme-btn" data-theme="">OS</button>
+      </div>
+      <div class="divider"></div>
+      <div class="row">
+        <button class="chartmode-btn" data-chartmode="normal">Normal</button>
+        <button class="chartmode-btn" data-chartmode="capped">Capped</button>
+        <button class="chartmode-btn" data-chartmode="log">Log</button>
       </div>
       <div class="divider"></div>
       <button id="toggleStale">Toggle stale</button>
@@ -120,6 +126,7 @@
         <button data-preset="urgentLow">Urgent low</button>
         <button data-preset="low">Low</button>
         <button data-preset="high">High</button>
+        <button data-preset="veryHigh">Very high</button>
         <button data-preset="noData">No data</button>
         <button data-preset="mmol">mmol/L units</button>
         <button data-preset="rapidFalling">Rapid falling trend</button>
@@ -178,6 +185,9 @@
       urgentLow: device('mgdl', 'a', 'Jake', 48, { urgentLow: true }, { trendDirection: 'SingleDown' }),
       low: device('mgdl', 'a', 'Jake', 64, { low: true }, { trendDirection: 'FortyFiveDown' }),
       high: device('mgdl', 'a', 'Jake', 232, { high: true }, { trendDirection: 'SingleUp' }),
+      // Base 380 so history()'s own +-12ish wobble straddles both the "capped" chart mode's 300
+      // cap and the sensor's own 400 max - useful for eyeballing clipping/pinning in both.
+      veryHigh: device('mgdl', 'a', 'Jake', 380, { high: true }, { trendDirection: 'DoubleUp' }),
       noData: device('mgdl', 'a', 'Jake', 118, { noData: true }, { updatedAt: Date.now() - 45 * 60000 }),
       mmol: device('mmol', 'a', 'Jake', 118, {}),
       rapidFalling: device('mgdl', 'a', 'Jake', 90, { low: true, rapidChange: true }, { trendDirection: 'DoubleDown' }),
@@ -187,6 +197,19 @@
     var iframe = document.getElementById('widget');
     var mockCssHref = 'homey-mock.css';
     var currentTheme = '';
+    var currentChartMode = 'normal';
+
+    // Prototype-only: index.html's own setChartMode (see its GLUCOSE-LOGIC/sparkline comments)
+    // re-renders whatever payload is currently on screen, same as applyTheme's re-application
+    // of the current theme on iframe (re)load below.
+    function applyChartMode(mode) {
+      currentChartMode = mode;
+      var win = iframe.contentWindow;
+      if (win && typeof win.setChartMode === 'function') win.setChartMode(mode);
+      document.querySelectorAll('.chartmode-btn').forEach(function (btn) {
+        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-chartmode') === mode));
+      });
+    }
 
     function injectMockCss() {
       var doc = iframe.contentDocument;
@@ -215,12 +238,18 @@
     iframe.addEventListener('load', function () {
       injectMockCss();
       applyTheme(currentTheme);
+      applyChartMode(currentChartMode);
     });
 
     document.querySelectorAll('.theme-btn').forEach(function (btn) {
       btn.addEventListener('click', function () { applyTheme(btn.getAttribute('data-theme')); });
     });
     applyTheme('');
+
+    document.querySelectorAll('.chartmode-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { applyChartMode(btn.getAttribute('data-chartmode')); });
+    });
+    applyChartMode(currentChartMode);
 
     function applyState(state) {
       var win = iframe.contentWindow;
