@@ -91,7 +91,7 @@
     .main { display: flex; align-items: center; gap: var(--homey-su-2); flex: 0 0 auto; }
     .value { font-size: 34px; font-weight: var(--homey-font-weight-medium); font-variant-numeric: tabular-nums; line-height: 1; }
     .value .unit { font-size: 14px; color: var(--homey-text-color-light); margin-left: 4px; }
-    .trend { display: inline-flex; }
+    .trend { display: inline-flex; gap: 1px; }
     .trend-icon {
       width: 24px; height: 24px; display: block; transform-origin: 50% 50%;
       fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
@@ -181,12 +181,13 @@
     // extracts this exact block, so keep it dependency-free) ===
     var GD = {
       // Every direction maps to one of four icon *shapes* - a single chevron-arrow (rotated per
-      // direction, so all five straight/diagonal trends share one consistent glyph), a stacked
-      // double-chevron for the two rapid trends, or a small question/dash glyph for the two
-      // directions Dexcom can't render as a meaningful arrow at all. Kept as pure data here
-      // (shape + rotation) rather than building markup, matching how sparkline() below returns
-      // geometry and leaves HTML-building to render() - the actual <svg> strings live in
-      // trendIconMarkup(), outside this dependency-free block.
+      // direction, so all five straight/diagonal trends share one consistent glyph), a pair of
+      // that same arrow drawn side-by-side for the two rapid trends (traditional Dexcom
+      // convention for "rapid rise"/"rapid fall" - two arrows, not a stacked double-chevron), or
+      // a small question/dash glyph for the two directions Dexcom can't render as a meaningful
+      // arrow at all. Kept as pure data here (shape + rotation) rather than building markup,
+      // matching how sparkline() below returns geometry and leaves HTML-building to render() -
+      // the actual <svg> strings live in trendIconMarkup(), outside this dependency-free block.
       TREND_ICON_SHAPE: {
         None: '', DoubleUp: 'double', SingleUp: 'arrow', FortyFiveUp: 'arrow', Flat: 'arrow',
         FortyFiveDown: 'arrow', SingleDown: 'arrow', DoubleDown: 'double',
@@ -410,25 +411,36 @@
     }
 
     // Same single-glyph-rotated-per-direction shape GD.trendIcon() describes, drawn as a plain
-    // shaft+chevron "arrow-up" (rotated for the other four straight/diagonal directions), a
-    // stacked double-chevron for DoubleUp/DoubleDown, and small question/dash glyphs for the two
-    // non-directional trends - one consistent stroke width/cap/join across all of them so they
-    // read as one icon set rather than mixed unicode glyphs.
+    // shaft+chevron "arrow-up" (rotated for the other four straight/diagonal directions) and
+    // small question/dash glyphs for the two non-directional trends - one consistent stroke
+    // width/cap/join across all of them so they read as one icon set rather than mixed unicode
+    // glyphs. The rapid-trend "double" shape reuses this same arrow glyph twice (see
+    // trendIconMarkup below) rather than having its own entry here.
     var TREND_ICON_INNER = {
       arrow: '<line x1="12" y1="19" x2="12" y2="5"></line><polyline points="6,11 12,5 18,11"></polyline>',
-      double: '<polyline points="5,17 12,10 19,17"></polyline><polyline points="5,11 12,4 19,11"></polyline>',
       question: '<circle cx="12" cy="12" r="9"></circle>'
         + '<path d="M9.3 9.3a2.7 2.7 0 1 1 3.9 2.4c-1 .5-1.6 1.1-1.6 2.3"></path>'
         + '<circle cx="12" cy="17.3" r=".9" fill="currentColor" stroke="none"></circle>',
       dash: '<line x1="6" y1="12" x2="18" y2="12"></line>',
     };
 
+    function trendIconSvg(inner, rotation) {
+      var style = rotation ? ' style="transform: rotate(' + rotation + 'deg)"' : '';
+      return '<svg class="trend-icon" viewBox="0 0 24 24"' + style + '>' + inner + '</svg>';
+    }
+
+    // DoubleUp/DoubleDown render as two of the same arrow glyph side-by-side (per
+    // .trend's flex layout) - the traditional Dexcom convention for rapid rise/fall - rather
+    // than a single stacked double-chevron glyph.
     function trendIconMarkup(direction) {
       var icon = GD.trendIcon(direction);
+      if (icon.shape === 'double') {
+        var arrow = trendIconSvg(TREND_ICON_INNER.arrow, icon.rotation);
+        return arrow + arrow;
+      }
       var inner = TREND_ICON_INNER[icon.shape];
       if (!inner) return '';
-      var style = icon.rotation ? ' style="transform: rotate(' + icon.rotation + 'deg)"' : '';
-      return '<svg class="trend-icon" viewBox="0 0 24 24"' + style + '>' + inner + '</svg>';
+      return trendIconSvg(inner, icon.rotation);
     }
 
     function render(payload) {

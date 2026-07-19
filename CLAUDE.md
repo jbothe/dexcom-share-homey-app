@@ -429,10 +429,11 @@ values, and the actual autocomplete-setting device-picker plumbing) still needs 
 is fully static — the sparkline's y-domain is now the fixed Dexcom sensor range (see `GD.sparkline`
 above) rather than data-driven, and the header never wraps to a second line at the widget's actual
 on-dashboard width — so every possible payload state renders to the same measured height, measured
-by injecting `homey-mock.css` into the real `public/index.html` (not the iframe harness, which
-already imposes its own fixed `380x240` box) and calling `render()` directly at a 380px viewport
-width. Re-measure the same way (`render()` at 380px width, badge and no-badge states, `mgdl` and
-`mmol`) if the header/badge/chart CSS changes again, rather than hand-adjusting this number.
+by injecting `homey-mock.css` into the real `public/index.html` directly (not the iframe harness)
+and calling `render()` at a 380px viewport width. Re-measure the same way (`render()` at 380px
+width, badge and no-badge states, `mgdl` and `mmol`) if the header/badge/chart CSS changes again,
+rather than hand-adjusting this number. The iframe harness's own box (`test/widget-preview.html`'s
+`iframe` rule) is sized `380x176` to match this measured height, not a wider approximation.
 
 Since the alarm pill moved into its own `.badge-wrap` flex cell, top-aligned alongside `.meta` and
 `.main` rather than sitting inline at the name's baseline (see the header-row comment above), the

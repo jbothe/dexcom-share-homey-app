@@ -75,7 +75,9 @@
     }
     html[data-theme='light'] .frame-wrap { background: #ffffff; border-color: #ccc; }
     html[data-theme='dark'] .frame-wrap { background: #0b0d12; border-color: #333; }
-    iframe { display: block; width: 380px; height: 240px; border: 0; }
+    /* 176px matches widget.compose.json's actual on-dashboard height - see CLAUDE.md's Widget
+       section for how that number was measured. */
+    iframe { display: block; width: 380px; height: 176px; border: 0; }
 
     textarea {
       width: 100%; height: 260px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
