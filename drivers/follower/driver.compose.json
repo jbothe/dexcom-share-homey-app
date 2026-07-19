@@ -1,5 +1,5 @@
 {
-  "name": { "en": "Dexcom", "de": "Dexcom", "nl": "Dexcom" },
+  "name": { "en": "Dexcom Share", "de": "Dexcom Share", "nl": "Dexcom Share" },
   "class": "sensor",
   "capabilities": [
     "measure_glucose",

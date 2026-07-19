@@ -48,24 +48,11 @@ export interface GlucoseSnapshot {
 }
 
 /**
- * Vertical-scale treatment for the dashboard widget's glucose history chart - a per-device
- * setting (`widgetChartScale`, see driver.settings.compose.json) so a widget bound to a given
- * device follows that device's own choice rather than the widget picking for itself. 'normal'
- * spans the full 40-400 mg/dL sensor range linearly; 'capped' narrows the top edge to 300 mg/dL
- * (readings above that pin to the top rather than being dropped); 'log' spans the same full
- * 40-400 range but logarithmically, so the same variation reads with more vertical room without
- * clipping any reading. See widgets/glucose-dashboard/public/index.html's GD.sparkline for the
- * actual rendering of all three.
- */
-export type WidgetChartScale = 'normal' | 'capped' | 'log';
-
-/**
  * Read model for app.ts's widget broadcast: a snapshot plus this device's own thresholds
- * (canonical mg/dL, same as the rest of the snapshot) and its chart-scale preference, so the
- * widget can shade its chart's severity zones and pick its y-axis treatment without a separate
- * settings lookup.
+ * (canonical mg/dL, same as the rest of the snapshot) so the widget can shade its chart's
+ * severity zones without a separate settings lookup.
  */
-export type WidgetSnapshot = GlucoseSnapshot & AlarmThresholds & { chartScale: WidgetChartScale };
+export type WidgetSnapshot = GlucoseSnapshot & AlarmThresholds;
 
 /** Host interface DexcomPoller is driven through, so it stays Homey-independent. */
 export interface DexcomPollerHost {

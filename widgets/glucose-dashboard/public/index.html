@@ -96,6 +96,14 @@
       width: 24px; height: 24px; display: block; transform-origin: 50% 50%;
       fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
     }
+    /* The arrow glyph itself only spans the middle third of its 24px viewBox (see
+       TREND_ICON_INNER.arrow's x6-x18 coordinates), so two icons placed side by side via
+       .trend's own 1px flex gap read as far apart - most of that gap is each icon's own
+       built-in padding, not space between the glyphs. Only fires for the DoubleUp/DoubleDown
+       rapid-trend case (trendIconMarkup's own "double" shape is the only place two
+       .trend-icon elements ever sit adjacent), pulling the second glyph in to sit close to
+       the first without touching, closer to how Dexcom's own app pairs its rapid-trend arrows. */
+    .trend-icon + .trend-icon { margin-left: -9px; }
 
     /* Same font-size/weight as .name (homey-text-bold on both) so the pill reads as a peer of
        the device name, not a smaller sub-label - text-transform: uppercase kept regardless of
@@ -213,9 +221,9 @@
       // rather than rescaling to whatever narrow band a given 3h window happened to sit in.
       DEXCOM_MIN_MGDL: 40,
       DEXCOM_MAX_MGDL: 400,
-      // Alternate y-axis top for the 'capped' chartMode (see sparkline's own opts.chartMode and
-      // types.ts's WidgetChartScale) - not derived from anything Dexcom-specific, just the cap
-      // this app's own "capped" chart view uses.
+      // Alternate y-axis top for the 'capped' chartMode (see sparkline's own opts.chartMode) -
+      // not derived from anything Dexcom-specific, just the cap this app's own "capped" chart
+      // view uses.
       CAPPED_MAX_MGDL: 300,
       // Matches DexcomPoller's own getGlucoseReadings(180, 36) window (see CLAUDE.md's
       // Architecture section) - the x-axis is always exactly this wide, anchored to "now"
@@ -297,11 +305,11 @@
         opts = opts || {};
         var W = opts.width || 260;
         var H = opts.height || 90;
-        // Which of the three mutually exclusive y-axis treatments to draw - driven by the bound
-        // device's own widgetChartScale setting (render() passes payload.chartScale through as
-        // opts.chartMode; see types.ts's WidgetChartScale). 'normal' (default, also the value
-        // every device gets until it's changed) is byte-for-byte the original always-40-400-
-        // linear behavior.
+        // Which of the three mutually exclusive y-axis treatments to draw - driven by this
+        // widget instance's own "chartScale" setting (widget.compose.json), not anything
+        // device-specific (render() passes it through as opts.chartMode). 'normal' (default,
+        // also the value every widget gets until it's changed) is byte-for-byte the original
+        // always-40-400-linear behavior.
         var mode = opts.chartMode || 'normal'; // 'normal' | 'capped' | 'log'
         var t1 = opts.nowMs != null ? opts.nowMs : Date.now();
         var t0 = t1 - GD.WINDOW_MS;
@@ -407,14 +415,13 @@
 
     var lastPayload = null;
 
-    // Dev-preview-only y-axis override ('normal' | 'capped' | 'log' - see GD.sparkline's own
-    // opts.chartMode and types.ts's WidgetChartScale). The real widget always gets this from the
-    // bound device's own `widgetChartScale` setting via payload.chartScale (see render() below,
-    // and device.ts's getChartScale()/getWidgetSnapshot()) - a widget mapped to a given device
-    // follows that device's own choice, it isn't a widget-level setting. This local var only
-    // matters as a fallback for payloads that don't carry chartScale at all (e.g.
-    // test/widget-preview.html's own preset JSON, which predates this setting), so its own
-    // chart-mode buttons can still flip the view for ad-hoc testing.
+    // Y-axis treatment for the sparkline ('normal' | 'capped' | 'log' - see GD.sparkline's own
+    // opts.chartMode). This is a widget-instance setting (widget.compose.json's own "chartScale"
+    // dropdown, alongside the "device" picker), not a device setting - a widget picks its own
+    // chart scale independent of which device it's bound to, the same way it owns its own
+    // "device" binding. onHomeyReady reads Homey.getSettings().chartScale once into this var (see
+    // below); setChartMode exists so test/widget-preview.html's own chart-mode buttons can flip
+    // it too, for ad-hoc testing without needing a real Homey settings round-trip.
     var chartMode = 'normal';
     function setChartMode(mode) {
       chartMode = mode;
@@ -527,9 +534,7 @@
         lowMgDl: payload.lowMgDl,
         highMgDl: payload.highMgDl,
         nowMs: Date.now(),
-        // payload.chartScale is this device's own widgetChartScale setting (see the comment on
-        // the local chartMode var above) - it wins whenever the payload actually carries it.
-        chartMode: payload.chartScale || chartMode,
+        chartMode: chartMode,
       });
       var sparkEl = document.getElementById('spark');
       var zones = (spark.zones || []).map(function (z) {
@@ -623,6 +628,14 @@
         var deviceSetting = Homey.getSettings().device;
         diag('Homey.getSettings().device', deviceSetting);
         boundDeviceId = (deviceSetting && deviceSetting.id) || null;
+
+        // This widget instance's own y-axis preference (widget.compose.json's own "chartScale"
+        // dropdown setting, see GD.sparkline's opts.chartMode) - read once alongside the device
+        // binding above, same cadence/guard.
+        var chartScaleSetting = Homey.getSettings().chartScale;
+        diag('Homey.getSettings().chartScale', chartScaleSetting);
+        chartMode = chartScaleSetting || 'normal';
+
         if (boundDeviceId) {
           // One shared channel for every follower (see broadcastDeviceState's own comment on
           // why a per-device dynamic channel name is exactly what broke) - filter to this

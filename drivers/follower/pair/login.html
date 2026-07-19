@@ -25,13 +25,17 @@
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     .page { display: flex; flex-direction: column; min-height: 100%; }
-    .content { flex: 1 1 auto; padding: 20px 20px 8px; }
+    /* Zeroed out per an on-device comparison against Homey's own list_devices step immediately
+       after this one: any hand-rolled padding here, even halved from an earlier 20px 20px 8px,
+       still added visible extra space beyond that native screen's own, so content shifted on the
+       transition. Homey's own Style Library components carry their own internal spacing. */
+    .content { flex: 1 1 auto; padding: 0; }
     /* Homey's native `.homey-header` renders its own divider under the title/subtitle block on
        a real device - not reproducible in test/homey-mock.css's approximation (see that file's
        own caveat: it only has the Style Library's class *names* to go on, not its exact CSS), so
        this was only ever visible on-device. Overridden off here per that on-device observation;
        not independently re-confirmed in this repo's own tooling. */
-    .homey-header { border-bottom: none; box-shadow: none; }
+    .homey-header { border-bottom: none; box-shadow: none; text-align: center; }
     /* .homey-subtitle is documented as a single line of subtitle text, not multi-paragraph body
        copy, so the paragraph gap between the two <p> tags inside #instructionsText (see below)
        is this file's own structural spacing, not something the Style Library provides. */
@@ -41,7 +45,7 @@
        button - see driver.ts's comment on why this step uses its own button instead of that one.
        margin-top: auto pins it to the bottom when content is short, and lets it sit right after
        the content if the screen ever grows tall enough to need scrolling. */
-    .footer { margin-top: auto; padding: 16px 20px; }
+    .footer { margin-top: auto; padding: 0; }
   </style>
 </head>
 <body>

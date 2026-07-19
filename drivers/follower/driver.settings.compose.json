@@ -49,7 +49,7 @@
   },
   {
     "type": "group",
-    "label": { "en": "Data and display", "de": "Daten und Anzeige", "nl": "Gegevens en weergave" },
+    "label": { "en": "Data", "de": "Daten", "nl": "Gegevens" },
     "children": [
       {
         "id": "units",
@@ -78,22 +78,6 @@
         "value": 20,
         "min": 10,
         "max": 120
-      },
-      {
-        "id": "widgetChartScale",
-        "type": "dropdown",
-        "label": { "en": "Widget chart scale", "de": "Widget-Diagrammskala", "nl": "Widget-grafiekschaal" },
-        "hint": {
-          "en": "How the glucose history chart's vertical axis is scaled in the dashboard widget bound to this device. Normal always spans Dexcom's full 40–400 mg/dL (2.2–22.2 mmol/L) sensor range. Capped narrows the top to 300 mg/dL (~16.7 mmol/L) so day-to-day variation in the normal range is easier to read (readings above that pin to the top of the chart). Logarithmic keeps the full range but compresses the high end, giving the normal range more room without capping any reading.",
-          "de": "Wie die vertikale Achse des Glukoseverlaufsdiagramms im diesem Gerät zugeordneten Dashboard-Widget skaliert wird. „Normal“ deckt immer den vollen Dexcom-Sensorbereich von 40–400 mg/dL (2,2–22,2 mmol/L) ab. „Begrenzt“ verkürzt die obere Grenze auf 300 mg/dL (~16,7 mmol/L), damit tägliche Schwankungen im Normalbereich besser erkennbar sind (Werte darüber werden oben an der Grenze fixiert). „Logarithmisch“ behält den vollen Bereich bei, staucht aber den oberen Teil, wodurch der Normalbereich mehr Platz erhält, ohne Messwerte zu kappen.",
-          "nl": "Hoe de verticale as van de glucosegeschiedenisgrafiek in de aan dit apparaat gekoppelde dashboardwidget wordt geschaald. ‘Normaal’ beslaat altijd het volledige Dexcom-sensorbereik van 40–400 mg/dL (2,2–22,2 mmol/L). ‘Beperkt’ verkort de bovengrens tot 300 mg/dL (~16,7 mmol/L), zodat dagelijkse schommelingen in het normale bereik beter zichtbaar zijn (waarden daarboven blijven vastzitten aan de bovenrand). ‘Logaritmisch’ behoudt het volledige bereik maar drukt het hoge uiteinde samen, waardoor het normale bereik meer ruimte krijgt zonder metingen af te kappen."
-        },
-        "value": "normal",
-        "values": [
-          { "id": "normal", "label": { "en": "Normal (40–400 mg/dL)", "de": "Normal (40–400 mg/dL)", "nl": "Normaal (40–400 mg/dL)" } },
-          { "id": "capped", "label": { "en": "Capped at 300 mg/dL", "de": "Begrenzt auf 300 mg/dL", "nl": "Beperkt tot 300 mg/dL" } },
-          { "id": "log", "label": { "en": "Logarithmic (40–400 mg/dL)", "de": "Logarithmisch (40–400 mg/dL)", "nl": "Logaritmisch (40–400 mg/dL)" } }
-        ]
       }
     ]
   },

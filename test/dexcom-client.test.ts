@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { describeDexcomError } from '../lib/dexcom/client';
+import { describeDexcomError, isRecognizedDexcomError } from '../lib/dexcom/client';
 
 /**
  * Only describeDexcomError is exercised here - it's the one pure function in client.ts. The rest
@@ -21,13 +21,13 @@ function dexcomError(errorType: string, errorEnum?: string): Error {
 test('AccountError maps to a credentials message, not the library\'s own raw text', () => {
   assert.equal(
     describeDexcomError(dexcomError('AccountError')),
-    'Could not sign in - check the username and password.',
+    'Could not sign in - check the username, password, and region.',
   );
 });
 
 test('an account lockout is called out separately from an ordinary bad password', () => {
   // Retrying a lockout is actively harmful (it compounds the lockout), so this case must not
-  // collapse into the generic "check the username and password" advice.
+  // collapse into the generic "check the username, password, and region" advice.
   assert.equal(
     describeDexcomError(dexcomError('AccountError', 'Maximum authentication attempts exceeded')),
     'Too many failed sign-in attempts. Wait a while before trying again.',
@@ -37,7 +37,7 @@ test('an account lockout is called out separately from an ordinary bad password'
 test('an unrecognised errorEnum on an AccountError still falls back to the generic account message', () => {
   assert.equal(
     describeDexcomError(dexcomError('AccountError', 'Some Future Enum Value')),
-    'Could not sign in - check the username and password.',
+    'Could not sign in - check the username, password, and region.',
   );
 });
 
@@ -70,4 +70,17 @@ test('an unrecognised errorType falls through to the message, not to a wrong bra
   // A future library release adding a new errorType must degrade to its own text rather than
   // being silently mislabelled as e.g. a credentials problem.
   assert.equal(describeDexcomError(dexcomError('SomeNewErrorType')), 'raw library message');
+});
+
+test('isRecognizedDexcomError is true for every errorType describeDexcomError gives a specific message for', () => {
+  assert.equal(isRecognizedDexcomError(dexcomError('AccountError')), true);
+  assert.equal(isRecognizedDexcomError(dexcomError('ArgumentError')), true);
+  assert.equal(isRecognizedDexcomError(dexcomError('ServerError')), true);
+  assert.equal(isRecognizedDexcomError(dexcomError('SessionError')), true);
+});
+
+test('isRecognizedDexcomError is false for an unrecognised errorType or no errorType at all', () => {
+  assert.equal(isRecognizedDexcomError(dexcomError('SomeNewErrorType')), false);
+  assert.equal(isRecognizedDexcomError(new Error('getaddrinfo ENOTFOUND')), false);
+  assert.equal(isRecognizedDexcomError(null), false);
 });

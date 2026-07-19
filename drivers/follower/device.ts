@@ -2,9 +2,7 @@
 
 import Homey from 'homey';
 import { DexcomPoller } from '../../lib/dexcom/DexcomPoller';
-import {
-  DexcomPollerHost, Units, WidgetChartScale, WidgetSnapshot,
-} from '../../lib/dexcom/types';
+import { DexcomPollerHost, Units, WidgetSnapshot } from '../../lib/dexcom/types';
 import {
   toDisplay, toMgdl, unitDecimals, unitLabel,
 } from '../../lib/dexcom/units';
@@ -75,15 +73,6 @@ module.exports = class FollowerDevice extends Homey.Device {
     return (this.getSetting('units') as Units | undefined) ?? 'mgdl';
   }
 
-  /**
-   * This device's own dashboard-widget chart-scale preference (see types.ts's WidgetChartScale).
-   * Falls back to 'normal' the same way getUnits() falls back to 'mgdl' - devices paired before
-   * this setting existed have no stored value for it at all.
-   */
-  getChartScale(): WidgetChartScale {
-    return (this.getSetting('widgetChartScale') as WidgetChartScale | undefined) ?? 'normal';
-  }
-
   async onSettings({ oldSettings, newSettings, changedKeys }: {
     oldSettings: Record<string, SettingValue>;
     newSettings: Record<string, SettingValue>;
@@ -125,9 +114,8 @@ module.exports = class FollowerDevice extends Homey.Device {
 
   /**
    * Read model for app.ts's widget broadcast - both units included, unit-agnostic, plus all
-   * three thresholds (converted to canonical mg/dL, same as the rest of the snapshot) and this
-   * device's own chart-scale preference, so the widget can shade its chart's severity zones and
-   * pick its y-axis treatment without a separate settings lookup.
+   * three thresholds (converted to canonical mg/dL, same as the rest of the snapshot) so the
+   * widget can shade its chart's severity zones without a separate settings lookup.
    */
   getWidgetSnapshot(): WidgetSnapshot | null {
     const snapshot = this.poller?.getSnapshot();
@@ -138,7 +126,6 @@ module.exports = class FollowerDevice extends Homey.Device {
       urgentLowMgDl: toMgdl(this.getSetting('urgentLowThreshold') as number, units),
       lowMgDl: toMgdl(this.getSetting('lowThreshold') as number, units),
       highMgDl: toMgdl(this.getSetting('highThreshold') as number, units),
-      chartScale: this.getChartScale(),
     };
   }
 

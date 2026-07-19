@@ -79,7 +79,7 @@ export function describeDexcomError(error: unknown): string {
     if (errorEnum === 'Maximum authentication attempts exceeded') {
       return 'Too many failed sign-in attempts. Wait a while before trying again.';
     }
-    return 'Could not sign in - check the username and password.';
+    return 'Could not sign in - check the username, password, and region.';
   }
   if (errorType === 'ArgumentError') {
     return 'Check that the username, password, and region are filled in correctly.';
@@ -88,4 +88,17 @@ export function describeDexcomError(error: unknown): string {
     return 'Dexcom Share is not responding right now. Try again in a moment.';
   }
   return error instanceof Error ? error.message : 'Could not sign in to Dexcom Share.';
+}
+
+const RECOGNIZED_DEXCOM_ERROR_TYPES = new Set(['AccountError', 'ArgumentError', 'ServerError', 'SessionError']);
+
+/**
+ * True when describeDexcomError() maps this to a specific, known-cause message rather than
+ * falling back to the raw library text - i.e. whether the error's own stack trace (always the
+ * same dexcom-share-client internal frames for these known types) still carries any signal worth
+ * logging, versus an unrecognised error where the stack is the only clue to what actually broke.
+ */
+export function isRecognizedDexcomError(error: unknown): boolean {
+  const errorType = (error as { errorType?: string } | null)?.errorType;
+  return errorType !== undefined && RECOGNIZED_DEXCOM_ERROR_TYPES.has(errorType);
 }

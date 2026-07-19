@@ -2,7 +2,7 @@
 
 import Homey from 'homey';
 import { resolvePairList, maskUsername, PendingFollowerCredentials } from '../../lib/pairing';
-import { verifyDexcomLogin, describeDexcomError } from '../../lib/dexcom/client';
+import { verifyDexcomLogin, describeDexcomError, isRecognizedDexcomError } from '../../lib/dexcom/client';
 
 /** Minimal surface this file needs from the device a flow card runs against. */
 interface FlowDevice {
@@ -45,7 +45,13 @@ module.exports = class FollowerDriver extends Homey.Driver {
         });
         return true;
       } catch (err) {
-        this.error('[pair] Dexcom login failed', err);
+        if (isRecognizedDexcomError(err)) {
+          const { errorType, errorEnum } = err as { errorType?: string; errorEnum?: string };
+          this.error('[pair] Dexcom login failed', { errorType, errorEnum });
+        } else {
+          // Unrecognised failure shape - the stack trace is the only clue to what broke.
+          this.error('[pair] Dexcom login failed', err);
+        }
         throw new Error(describeDexcomError(err));
       }
     });
