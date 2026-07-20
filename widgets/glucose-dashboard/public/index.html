@@ -96,7 +96,28 @@
     .headrow { display: flex; align-items: flex-start; gap: var(--homey-su-2); }
     .meta { display: flex; flex-direction: column; align-items: flex-start; gap: 0; flex: 0 1 auto; min-width: 0; }
     .badge-wrap { flex: 1 1 auto; display: flex; align-items: flex-start; justify-content: center; min-width: 0; }
-    .ago { color: var(--homey-text-color-light); white-space: nowrap; }
+    /* .ago sits alongside the window-indicator pill on the same line, not stacked. The pill
+       carries the "homey-text-small-light" class in the markup (same as .ago itself), so its
+       font-size/weight/line-height/color match .ago exactly rather than being a smaller/lighter
+       sub-label - only .window-pill's own background/radius/horizontal padding are added on top.
+       Vertical padding is deliberately 0: the pill's box height is then just that shared
+       line-height (same one .ago alone already occupied), so it doesn't grow this row - and by
+       extension .meta and the whole card - any taller than before the pill existed. min-width: 0
+       lets .ago itself still truncate/wrap first if the name above ever forces .meta narrow,
+       before the pill would. */
+    .ago-row { display: flex; align-items: center; gap: var(--homey-su-1); min-width: 0; }
+    .ago { color: var(--homey-text-color-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Shows which of GD.WINDOW_OPTIONS_MS the chart is currently displaying (tap the chart to
+       cycle - see cycleWindow below). Deliberately the same visual weight as .ago (small/light)
+       rather than styled like .badge - it's a passive state readout, not a second alarm-style
+       call to action. Empty (no payload yet) is hidden the same way .badge:empty is. */
+    .window-pill {
+      background: color-mix(in srgb, var(--homey-text-color-light) 16%, transparent);
+      border-radius: var(--homey-border-radius-small);
+      padding: 0 var(--homey-su-1);
+      white-space: nowrap;
+    }
+    .window-pill:empty { display: none; }
 
     .main { display: flex; align-items: center; gap: var(--homey-su-2); flex: 0 0 auto; }
     .value { font-size: 34px; font-weight: var(--homey-font-weight-medium); font-variant-numeric: tabular-nums; line-height: 1; }
@@ -154,7 +175,10 @@
        height of 90, but preserveAspectRatio="none" already stretches that non-uniformly to
        fit the element's real rendered box, so a few extra or fewer px here doesn't distort the
        zone/line proportions, it just changes how tall the last row of pixels reaches. */
-    .spark { display: block; width: 100%; flex: 1 1 auto; min-height: 0; margin-top: var(--homey-su-2); overflow: visible; }
+    /* cursor: pointer is a no-op on the touch devices Homey dashboards actually run on, but
+       costs nothing and helps on desktop/browser-embedded dashboards - see cycleWindow's own
+       click listener on this element. */
+    .spark { display: block; width: 100%; flex: 1 1 auto; min-height: 0; margin-top: var(--homey-su-2); overflow: visible; cursor: pointer; }
     .spark .zone.urgent-low { fill: var(--spark-zone-urgent-low); }
     .spark .zone.low { fill: var(--spark-zone-low); }
     .spark .zone.normal { fill: var(--spark-zone-normal); }
@@ -187,7 +211,10 @@
     <div class="headrow">
       <div class="meta">
         <div class="name homey-text-bold" id="name"></div>
-        <div class="ago homey-text-small-light" id="ago"></div>
+        <div class="ago-row">
+          <div class="ago homey-text-small-light" id="ago"></div>
+          <div class="window-pill homey-text-small-light" id="windowPill"></div>
+        </div>
       </div>
       <div class="badge-wrap">
         <div class="badge homey-text-bold" id="badge"></div>
@@ -241,16 +268,43 @@
       // not derived from anything Dexcom-specific, just the cap this app's own "capped" chart
       // view uses.
       CAPPED_MAX_MGDL: 300,
-      // Matches DexcomPoller's own getGlucoseReadings(180, 36) window (see CLAUDE.md's
-      // Architecture section) - the x-axis is always exactly this wide, anchored to "now"
-      // (see sparkline's own opts.nowMs), not to whatever span the actual samples happen to
-      // cover, so a stale tail (no recent readings) shows as trailing empty space instead of
+      // Default/fallback display window when a caller doesn't pass opts.windowMs - kept as the
+      // narrowest of WINDOW_OPTIONS_MS below, not an independent value, so the two can't drift
+      // apart. sparkline() filters the payload's history down to whichever window is actually
+      // requested, so a payload wider than the requested window (DexcomPoller.ts now fetches the
+      // full 24h Dexcom Share allows - see lib/dexcom/types.ts's HistoryPoint comment) is simply
+      // ignored past that window's edge. The x-axis is always exactly opts.windowMs wide, anchored
+      // to "now" (see sparkline's own opts.nowMs), not to whatever span the actual samples happen
+      // to cover, so a stale tail (no recent readings) shows as trailing empty space instead of
       // silently stretching old samples across the full card width.
-      WINDOW_MS: 3 * 60 * 60 * 1000,
+      WINDOW_OPTIONS_MS: [3, 6, 12, 24].map(function (h) { return h * 60 * 60 * 1000; }),
+      get WINDOW_MS() { return GD.WINDOW_OPTIONS_MS[0]; },
+      // Tapping the chart (see index.html's cycleWindow, outside this block) cycles forward
+      // through WINDOW_OPTIONS_MS and wraps - an unrecognized current value (shouldn't happen,
+      // but cheap to guard) resets to the narrowest option rather than throwing.
+      nextWindowMs: function (currentMs) {
+        var options = GD.WINDOW_OPTIONS_MS;
+        var idx = options.indexOf(currentMs);
+        return idx === -1 ? options[0] : options[(idx + 1) % options.length];
+      },
+      // Plain "3H"/"24H" style label for the window-indicator pill next to the "ago" text -
+      // untranslated, same as the chart's own numeric tick-labels (GD.fmtTick), since it's a
+      // number+unit abbreviation rather than a sentence.
+      windowLabel: function (windowMs) { return Math.round(windowMs / (60 * 60 * 1000)) + 'H'; },
       // Normal cadence is ~5 min (see DexcomPoller) - a gap wider than this between two
       // consecutive samples means at least one reading was actually missing, not just clock
       // jitter, and should draw as a visible break rather than a straight line bridging it.
       GAP_THRESHOLD_MS: 8 * 60 * 1000,
+      // Dot density control for the wider windows: at 12h/24h a 5-min cadence packs 144-288
+      // points into the same 260px-wide chart that 3h shows 36 of, and a <circle> per sample
+      // turns into an illegible smear. Doubles alongside each doubling of WINDOW_OPTIONS_MS
+      // (index 0/1/2/3 -> stride 1/2/4/8) so every window keeps roughly the same ~36-dot density
+      // 3h has today. Purely a dot-rendering decluttering - the line itself (segments) is never
+      // thinned, only how many of its points additionally get their own <circle> drawn on top.
+      dotStride: function (windowMs) {
+        var idx = GD.WINDOW_OPTIONS_MS.indexOf(windowMs);
+        return idx === -1 ? 1 : Math.pow(2, idx);
+      },
       toDisplay: function (mgdl, units) { return units === 'mmol' ? GD.mgdlToMmol(mgdl) : Math.round(mgdl); },
       unitSuffix: function (units) { return units === 'mmol' ? 'mmol/L' : 'mg/dL'; },
       fmtValue: function (mgdl, units) {
@@ -328,7 +382,8 @@
         // always-40-400-linear behavior.
         var mode = opts.chartMode || 'normal'; // 'normal' | 'capped' | 'log'
         var t1 = opts.nowMs != null ? opts.nowMs : Date.now();
-        var t0 = t1 - GD.WINDOW_MS;
+        var windowMs = opts.windowMs != null ? opts.windowMs : GD.WINDOW_MS;
+        var t0 = t1 - windowMs;
         if (!history || history.length === 0) return { segments: [], dots: [], zones: [], yTicks: [] };
 
         var domainMin = GD.toDisplay(GD.DEXCOM_MIN_MGDL, units);
@@ -380,10 +435,14 @@
         // One line element per adjacent, gap-free pair (rather than one polyline per contiguous
         // run) so each leg can carry its own zone color - colored by the sample it arrives at
         // (pts[i]), so the trace turns e.g. yellow as it climbs into the high zone. A pair split
-        // by a GAP_THRESHOLD_MS-or-wider hole draws no connecting leg at all.
+        // by a GAP_THRESHOLD_MS-or-wider hole draws no connecting leg at all. connectedToPrev[i]
+        // is recorded alongside (same gap test) purely for the dot-thinning pass below - it never
+        // affects segments/lines themselves, which are always drawn in full regardless of window.
         var segments = [];
+        var connectedToPrev = [];
         pts.forEach(function (p, i) {
-          if (i === 0 || (p.t - pts[i - 1].t) > GD.GAP_THRESHOLD_MS) return;
+          connectedToPrev[i] = i > 0 && (p.t - pts[i - 1].t) <= GD.GAP_THRESHOLD_MS;
+          if (!connectedToPrev[i]) return;
           var prev = pts[i - 1];
           segments.push({
             points: prev.x.toFixed(1) + ',' + prev.y.toFixed(1) + ' ' + p.x.toFixed(1) + ',' + p.y.toFixed(1),
@@ -419,9 +478,23 @@
           { y: 0, label: GD.fmtTick(domainMax, units) },
           { y: H, label: GD.fmtTick(domainMin, units) },
         ];
+        // Dot thinning (see GD.dotStride above) - a stride-1 window (the default 3h) keeps every
+        // dot, unchanged from before this existed. At wider windows, only every stride-th point
+        // gets its own <circle>, except: the most recent sample (always shown, so "where's my
+        // latest reading" never depends on where thinning happened to land), and any stranded
+        // point - one with no gap-free neighbor on *either* side (not connectedToPrev itself, and
+        // not the next point's connectedToPrev either) - which stays visible regardless of stride
+        // since it's not part of any segment and would otherwise vanish entirely rather than just
+        // look less busy.
+        var stride = GD.dotStride(windowMs);
+        var dots = pts.filter(function (p, i) {
+          if (stride <= 1 || i === pts.length - 1) return true;
+          var stranded = !connectedToPrev[i] && !connectedToPrev[i + 1];
+          return stranded || i % stride === 0;
+        }).map(function (p) { return { x: p.x, y: p.y, cls: zoneClass(p.v) }; });
         return {
           segments: segments,
-          dots: pts.map(function (p) { return { x: p.x, y: p.y, cls: zoneClass(p.v) }; }),
+          dots: dots,
           zones: zones,
           yTicks: yTicks,
         };
@@ -443,6 +516,31 @@
       chartMode = mode;
       if (lastPayload) render(lastPayload);
     }
+
+    // Chart display window - a runtime-only interaction state, not a widget setting: the
+    // client-side Homey object exposed to widgets has no settings-write method (confirmed against
+    // Homey's own widget docs - getSettings() is read-only, settings are only ever changed via
+    // the widget's own settings/edit modal), so there is nowhere to persist this even if it were
+    // wanted. Deliberately not persisted to localStorage either - always starts at the narrowest
+    // option (GD.WINDOW_OPTIONS_MS[0], 3h) on every load, matching the "quick peek at more
+    // history" framing this was built for rather than a sticky per-widget preference, and
+    // sidestepping the multi-device inconsistency a localStorage-backed preference would have
+    // (the same widget instance viewed on two different browsers/tablets would otherwise disagree
+    // on which window it's showing). Tapping anywhere on the chart cycles it - see the #spark
+    // click listener below.
+    var currentWindowMs = GD.WINDOW_OPTIONS_MS[0];
+    function cycleWindow() {
+      currentWindowMs = GD.nextWindowMs(currentWindowMs);
+      // No-op (not an error) when running outside a real Homey widget context - same guard
+      // pattern as t()'s own HomeyRef check just above.
+      if (HomeyRef && HomeyRef.hapticFeedback) HomeyRef.hapticFeedback();
+      if (lastPayload) render(lastPayload);
+    }
+    // #spark is a static element from the page's own initial markup (only its innerHTML is
+    // replaced per render, never the element itself), so this only needs to run once at script
+    // load - unlike the realtime/poll listeners below, it doesn't need onHomeyReady's own
+    // duplicate-registration guard.
+    document.getElementById('spark').addEventListener('click', cycleWindow);
 
     // Set once onHomeyReady fires (see below) - stays null when this file is driven directly
     // (test/widget-preview.html calls render()/onData() straight, bypassing onHomeyReady
@@ -516,6 +614,7 @@
         document.getElementById('value').textContent = '–';
         document.getElementById('trend').textContent = '';
         document.getElementById('ago').textContent = '';
+        document.getElementById('windowPill').textContent = '';
         document.getElementById('badge').textContent = '';
         document.getElementById('badge').className = 'badge homey-text-bold';
         document.getElementById('spark').innerHTML = '';
@@ -537,6 +636,7 @@
         document.getElementById('trend').innerHTML = trendIconMarkup(payload.trendDirection);
       }
       document.getElementById('ago').textContent = agoLabel(GD.fmtAgo(payload.updatedAt, Date.now()));
+      document.getElementById('windowPill').textContent = GD.windowLabel(currentWindowMs);
 
       var badgeEl = document.getElementById('badge');
       var badgeKey = GD.badgeText(payload.alarms);
@@ -551,6 +651,7 @@
         highMgDl: payload.highMgDl,
         nowMs: Date.now(),
         chartMode: chartMode,
+        windowMs: currentWindowMs,
       });
       var sparkEl = document.getElementById('spark');
       var zones = (spark.zones || []).map(function (z) {

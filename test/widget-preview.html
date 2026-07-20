@@ -130,6 +130,7 @@
         <button data-preset="noData">No data</button>
         <button data-preset="mmol">mmol/L units</button>
         <button data-preset="rapidFalling">Rapid falling trend</button>
+        <button data-preset="dense24h">Dense 24h history</button>
         <button data-preset="empty">Before first broadcast</button>
       </div>
     </section>
@@ -191,6 +192,11 @@
       noData: device('mgdl', 'a', 'Jake', 118, { noData: true }, { updatedAt: Date.now() - 45 * 60000 }),
       mmol: device('mmol', 'a', 'Jake', 118, {}),
       rapidFalling: device('mgdl', 'a', 'Jake', 90, { low: true, rapidChange: true }, { trendDirection: 'DoubleDown' }),
+      // A full 24h/288-reading payload (matching DexcomPoller.ts's own fetch window) - tap the
+      // chart a few times after applying this one to cycle 3h -> 6h -> 12h -> 24h and see the
+      // dot-thinning (GD.dotStride) kick in as the window widens, rather than the default
+      // 36-point/3h history every other preset here uses.
+      dense24h: device('mgdl', 'a', 'Jake', 118, {}, { overrides: { history: history(118, 288) } }),
       empty: null,
     };
 

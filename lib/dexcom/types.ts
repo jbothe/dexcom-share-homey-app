@@ -22,7 +22,12 @@ export interface AlarmState {
   noData: boolean;
 }
 
-/** One point of the widget's 3h history, oldest-to-newest, mg/dL. */
+/**
+ * One point of the poller's history, oldest-to-newest, mg/dL. Carries the full 24h Dexcom Share
+ * allows (DexcomPoller.ts's HISTORY_MINUTES/HISTORY_MAX_COUNT) - the widget's own sparkline
+ * currently windows this down to a fixed 3h client-side (see its own WINDOW_MS), but the payload
+ * itself already carries enough for a wider/configurable range without any poller change.
+ */
 export interface HistoryPoint {
   t: number;
   v: number;

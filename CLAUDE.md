@@ -469,20 +469,77 @@ longer height-determining here, since the badge (30.3px) sits well under the row
 set by `.meta`'s stacked name + "time ago" lines) — re-measure it anyway if a future change makes
 the badge tall enough to exceed that.
 
-**Sparkline x-axis is a fixed `WINDOW_MS` (3h, matching `DexcomPoller`'s own `getGlucoseReadings(180,
-36)` call) window anchored to `opts.nowMs` (defaults to `Date.now()`), not to the actual first/last
-sample timestamps.** An earlier revision scaled x from `history[0].t` to `history[last].t` — if the
-most recent reading was stale (e.g. no data for the last 20 minutes), the existing samples still got
+**Sparkline x-axis is a fixed-width window (`opts.windowMs`, one of `GD.WINDOW_OPTIONS_MS` — 3h/6h/
+12h/24h) anchored to `opts.nowMs` (defaults to `Date.now()`), not to the actual first/last sample
+timestamps.** An earlier revision scaled x from `history[0].t` to `history[last].t` — if the most
+recent reading was stale (e.g. no data for the last 20 minutes), the existing samples still got
 stretched edge-to-edge, silently erasing the fact that recent data was missing. Samples are also no
 longer joined into one continuous polyline: `GD.sparkline()` returns `segments` (one points-string
 per run of consecutive samples no more than `GAP_THRESHOLD_MS` — 8 min, a bit under 2x the ~5 min
-poll cadence — apart) and `dots` (every in-window sample's `{x,y}`, regardless of segment). A real
-gap (sensor/connectivity dropout, not just poll jitter) now draws as a visible break instead of a
-straight line bridging it, and a sample stranded between two gaps still shows up as a lone dot even
-though it's not part of any 2-point segment. `render()` builds one `<polyline>` per segment plus one
-`<circle>` per dot from these, in that order (dots paint on top). The domain's two edges carry a
-value label but **no gridline of their own** — the shaded zones (below) already tile the whole plot
-area, so their outer edges mark the same two boundaries the old dashed rules did.
+poll cadence — apart) and `dots` (every in-window sample's `{x,y}`, regardless of segment, subject
+to the dot-thinning described below). A real gap (sensor/connectivity dropout, not just poll jitter)
+now draws as a visible break instead of a straight line bridging it, and a sample stranded between
+two gaps still shows up as a lone dot even though it's not part of any 2-point segment. `render()`
+builds one `<polyline>` per segment plus one `<circle>` per dot from these, in that order (dots
+paint on top). The domain's two edges carry a value label but **no gridline of their own** — the
+shaded zones (below) already tile the whole plot area, so their outer edges mark the same two
+boundaries the old dashed rules did.
+
+**The display window is tap-to-cycle, not a widget setting, and deliberately not persisted.**
+`DexcomPoller.ts` now fetches the full 24h Dexcom Share allows (`HISTORY_MINUTES`/
+`HISTORY_MAX_COUNT`, see the Architecture section), so the payload already carries enough history
+for 6h/12h/24h — this is purely a display-side change, no poller/payload work needed. Considered a
+`widgetScale`-style dropdown setting (same pattern as `chartScale`, see Units-adjacent bullet
+above) but rejected it: opening the widget's settings modal just to glance at a wider window is the
+"clunky to quickly check" friction that motivated this feature in the first place, and Dexcom's own
+app exposes this as an in-card tap/segmented control, not a settings screen. Tapping anywhere on
+the chart (`#spark`'s own `click` listener, calling `cycleWindow()`) advances through
+`GD.WINDOW_OPTIONS_MS` and wraps from 24h back to 3h (`GD.nextWindowMs()`, a pure function so it's
+unit-tested the same way the rest of `GLUCOSE-LOGIC` is); `HomeyRef.hapticFeedback()` fires on each
+tap when running as a real widget (guarded the same way `t()` guards `HomeyRef` — the dev harness
+has no `HomeyRef`, so taps there are silent but otherwise fully functional). The chosen window
+lives in a plain module-level variable (`currentWindowMs`), **not** `localStorage`, and always
+resets to the narrowest option (`GD.WINDOW_OPTIONS_MS[0]`) on every widget load — checked against
+Homey's own widget client docs first: the `Homey` object exposed to a dashboard widget has no
+settings-write method at all (`getSettings()` is read-only; a setting can only change via the
+widget's own settings/edit modal), so there is nowhere server-side to persist this even if it were
+wanted, and `localStorage` was the only way it *could* have been made sticky. Deliberately not used
+anyway: the same widget instance viewed on two different browsers/tablets would then disagree about
+which window it's showing, which cuts against the "quick peek" framing this was built for — always
+starting at 3h is simpler and has no cross-device surprise.
+
+**`GD.windowLabel(currentWindowMs)` (e.g. `"3H"`) renders in a pill next to the `.ago` text**
+(`.ago-row`, wrapping both in the header's `.meta` column), passively indicating which window is
+current — not a second alarm-style badge, and not itself a tap target (it's small; the whole chart
+is the much larger, easier target). Untranslated, like the chart's own numeric tick-labels
+(`GD.fmtTick`) — a number+unit abbreviation, not a sentence, so it doesn't go through
+`Homey.__()`/the `locales/*.json` mechanism. The pill carries the same `homey-text-small-light`
+class as `.ago` itself (in the markup, not duplicated in `.window-pill`'s own CSS), so its font-
+size/weight/line-height/color match `.ago` exactly rather than reading as a smaller sub-label -
+`.window-pill` only adds background/border-radius/horizontal padding on top. Vertical padding is
+deliberately 0: the pill's box height is then just that shared line-height, the same one `.ago`
+alone already occupied, so it can't grow `.ago-row` - and by extension `.meta` and the card - any
+taller than before the pill existed. Confirmed via the preview harness (computed styles matched
+`.ago`'s exactly, and the card still measured 176px with a dense-24h payload and again with an
+alarm badge present).
+
+**Dot density is thinned at wider windows (`GD.dotStride(windowMs)`), the line itself never is.**
+At 12h/24h, a ~5 min poll cadence packs 144–288 samples into the same 260px-wide chart 3h shows ~36
+of — one `<circle>` per sample at that density reads as an illegible smear (Dexcom's own app thins/
+hides dots at wider zooms for the same reason). `dotStride` doubles at each step through
+`WINDOW_OPTIONS_MS` (1/2/4/8 for 3h/6h/12h/24h), keeping roughly 3h's own ~36-dot density at every
+window. Two things are exempt from thinning regardless of stride, so it never hides real
+information, only redundant density: the most recent sample (so "where's my latest reading" never
+depends on where thinning happened to land) and any **stranded** point — one with no gap-free
+neighbor on either side, i.e. not part of any segment — which would otherwise vanish entirely
+rather than just look less busy (the same "a lone reading between two gaps still gets a dot"
+guarantee the paragraph above already makes for the un-thinned case). `segments` themselves are
+built from the full, unthinned point list, so the trace stays continuous; thinning only decides
+which points additionally get their own `<circle>` drawn on top of it. Verified in the preview
+harness's `"Dense 24h history"` preset (a full 288-reading/24h payload, unlike every other preset's
+default ~36-point/3h history) — tapping through the four windows visibly thins the dots while the
+line stays unbroken, and a scripted click-through confirmed dot counts of 36/37/37/37 across
+3h→6h→12h→24h against that preset, with the card's height unchanged at 176px throughout.
 
 **The alarm pill centers its text with `text-box: trim-both cap alphabetic`, not with padding
 alone.** Its padding wraps a *line box*, which always reserves descender room, but the pill's text
@@ -638,7 +695,11 @@ section) is unit-tested via the fake-clock/fake-client harness but its actual ef
 time-to-first-paint after a real app restart is likewise unconfirmed on-device. Also unconfirmed:
 the exact ordering of `onSettings`'s resolution vs. Homey's own persistence of `newSettings`, which
 `device.ts`'s deferred (`setTimeout(0)`) threshold-correction-on-units-change relies on (see Units
-above) — untested by design, same as the rest of the thin Homey adapters (see Testing).
+above) — untested by design, same as the rest of the thin Homey adapters (see Testing). Also
+unconfirmed: the tap-to-cycle window control's `HomeyRef.hapticFeedback()` call (see the Widget
+section) — the preview harness has no `HomeyRef` at all (see its own doc comment), so the tap
+cycling/thinning/pill logic was verified there, but the haptic itself has never fired outside a real
+Homey widget context.
 
 ## Art
 **The app icon (`assets/icon.svg`) is Dexcom's own wordmark** — the supplied `dexcom.svg` brand

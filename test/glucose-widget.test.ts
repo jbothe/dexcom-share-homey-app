@@ -240,3 +240,78 @@ test('sparkline: a nonsensical threshold ordering drops the inverted zone rather
   assert.ok(!zones.some((z) => z.cls === 'normal'), 'inverted normal zone dropped');
   assert.ok(zones.every((z) => z.height > 0), 'every surviving zone still has positive height');
 });
+
+test('WINDOW_OPTIONS_MS: the four supported display windows, ascending, matching the Dexcom app', () => {
+  const HOUR = 60 * 60 * 1000;
+  assert.deepEqual(GD.WINDOW_OPTIONS_MS, [3 * HOUR, 6 * HOUR, 12 * HOUR, 24 * HOUR]);
+});
+
+test('WINDOW_MS: the default/fallback window is the narrowest option, not an independent value', () => {
+  assert.equal(GD.WINDOW_MS, (GD.WINDOW_OPTIONS_MS as unknown as number[])[0]);
+});
+
+test('nextWindowMs: cycles forward through WINDOW_OPTIONS_MS and wraps back to the start', () => {
+  const options = GD.WINDOW_OPTIONS_MS as unknown as number[];
+  assert.equal(GD.nextWindowMs(options[0]), options[1]);
+  assert.equal(GD.nextWindowMs(options[1]), options[2]);
+  assert.equal(GD.nextWindowMs(options[2]), options[3]);
+  assert.equal(GD.nextWindowMs(options[3]), options[0], 'wraps from 24h back to 3h');
+});
+
+test('nextWindowMs: an unrecognized current value resets to the narrowest option', () => {
+  const options = GD.WINDOW_OPTIONS_MS as unknown as number[];
+  assert.equal(GD.nextWindowMs(999), options[0]);
+});
+
+test('windowLabel: formats a window duration as a plain "NH" pill label', () => {
+  const HOUR = 60 * 60 * 1000;
+  assert.equal(GD.windowLabel(3 * HOUR), '3H');
+  assert.equal(GD.windowLabel(24 * HOUR), '24H');
+});
+
+test('dotStride: doubles at each wider WINDOW_OPTIONS_MS step, 1 for an unrecognized window', () => {
+  const options = GD.WINDOW_OPTIONS_MS as unknown as number[];
+  assert.equal(GD.dotStride(options[0]), 1);
+  assert.equal(GD.dotStride(options[1]), 2);
+  assert.equal(GD.dotStride(options[2]), 4);
+  assert.equal(GD.dotStride(options[3]), 8);
+  assert.equal(GD.dotStride(999), 1);
+});
+
+test('sparkline: at the default 3h window (stride 1), every sample still gets its own dot', () => {
+  const history = Array.from({ length: 20 }, (_, i) => ({ t: SPARK_NOW - (19 - i) * 300_000, v: 100 }));
+  const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as { dots: unknown[] };
+  assert.equal(result.dots.length, 20, 'stride 1 (the default window) thins nothing');
+});
+
+test('sparkline: a wider window thins dots by GD.dotStride, but always keeps the most recent sample', () => {
+  const windowMs = (GD.WINDOW_OPTIONS_MS as unknown as number[])[3]; // 24h -> stride 8
+  // 16 evenly-spaced, gap-free points - on-stride indices are 0 and 8; index 15 (the last) is
+  // forced to stay regardless of stride so the current reading is never thinned away.
+  const history = Array.from({ length: 16 }, (_, i) => ({ t: SPARK_NOW - (15 - i) * 300_000, v: 100 }));
+  const result = GD.sparkline(history, 'mgdl', {
+    width: 260, height: 90, nowMs: SPARK_NOW, windowMs,
+  }) as { dots: unknown[] };
+  assert.equal(result.dots.length, 3, 'only indices 0, 8, and the forced-last 15 survive stride 8');
+});
+
+test('sparkline: thinning still keeps a point stranded between two gaps, even when off-stride', () => {
+  const windowMs = (GD.WINDOW_OPTIONS_MS as unknown as number[])[2]; // 12h -> stride 4
+  const gapMs = (GD.GAP_THRESHOLD_MS as unknown as number) + 60_000;
+  const step = 300_000;
+  // Indices 0-4 form one connected run, index 5 is isolated by a GAP_THRESHOLD_MS-or-wider hole
+  // on both sides (off-stride: 5 % 4 !== 0), indices 6-10 form a second connected run ending at
+  // "now". On-stride survivors would normally be just 0, 4, 8, plus the forced-last 10 - this
+  // asserts index 5 survives too, purely because it's stranded, not because of its index.
+  const times = [0, 1, 2, 3, 4].map((i) => i * step);
+  const strandedT = times[4] + gapMs;
+  const secondRunStart = strandedT + gapMs;
+  times.push(strandedT);
+  [0, 1, 2, 3, 4].forEach((i) => times.push(secondRunStart + i * step));
+  const base = SPARK_NOW - times[times.length - 1];
+  const history = times.map((t) => ({ t: base + t, v: 100 }));
+  const result = GD.sparkline(history, 'mgdl', {
+    width: 260, height: 90, nowMs: SPARK_NOW, windowMs,
+  }) as { dots: unknown[] };
+  assert.equal(result.dots.length, 5, 'indices 0, 4, 5 (stranded), 8, and the forced-last 10 survive');
+});

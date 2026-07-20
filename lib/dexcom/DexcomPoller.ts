@@ -50,8 +50,11 @@ const TRANSIENT_BACKOFF_MS = [60_000, 120_000, NORMAL_INTERVAL_MS];
 const ACCOUNT_ERROR_BACKOFF_MS = 15 * 60_000;
 /** requestImmediateRefresh() no-ops if the last tick was more recent than this. */
 const MIN_REFRESH_GAP_MS = 60_000;
-const HISTORY_MINUTES = 180;
-const HISTORY_MAX_COUNT = 36;
+// Dexcom Share's own ceiling (dexcom-share-client's MAX_MINUTES/MAX_MAX_COUNT) - pulling the full
+// 24h lets the widget's history payload carry more than its own current fixed 3h display window
+// needs, so a future per-widget time-range setting can zoom out without any poller/payload change.
+const HISTORY_MINUTES = 1440;
+const HISTORY_MAX_COUNT = 288;
 
 function emptySnapshot(): GlucoseSnapshot {
   return {
@@ -285,7 +288,7 @@ export class DexcomPoller {
     if (readings.length === 0) {
       // A successful poll can legitimately return nothing - most often a freshly paired account
       // whose sensor session hasn't produced a reading yet (driver.ts's own pairing check treats
-      // exactly this as a valid login), or one whose last reading has aged out of the 180-minute
+      // exactly this as a valid login), or one whose last reading has aged out of the 24-hour
       // request window entirely. There's nothing to classify, but the alarm capabilities must
       // still be written once so Homey's own defaults don't linger unset on the device tile -
       // the same reason the !capabilitiesInitialized force-write below exists. Without this, that
@@ -325,7 +328,7 @@ export class DexcomPoller {
     }
 
     // Dexcom keeps returning the same last-measured reading (same latestTimeMs) on every poll
-    // for as long as it's still within the requested 180-minute window, even once it's stale
+    // for as long as it's still within the requested 24-hour window, even once it's stale
     // enough to trip alarm_no_data - readings is never empty just because nothing new arrived.
     // isNewReading gates severity/rapid-change re-evaluation below on that, not just
     // onGlucoseChanged: without it, a reading that applyNoDataAlarm() has already cleared back
