@@ -14,9 +14,19 @@
     /* touch-action backstops the viewport meta tag's user-scalable=no - iOS Safari (and some
        embedded webviews) ignore that meta directive for accessibility reasons but still honor
        touch-action, so pinch-zoom stays blocked either way. */
-    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; touch-action: pan-x pan-y; }
+    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; touch-action: pan-x pan-y; height: 100%; }
     body { color: var(--homey-text-color); -webkit-font-smoothing: antialiased; }
-    .card { padding: var(--homey-su-4); transition: opacity .5s ease, filter .5s ease; }
+    /* height: 100% + flex, rather than an auto-sized box, so the card always fills Homey's
+       actual widget slot (widget.compose.json's declared "height": 176) instead of only its
+       own content height. The content (headrow + spark) measures 172px, 4px short of that
+       176px slot - without stretching, that leftover 4px sat unstyled below the card, on top
+       of the padding, only at the bottom (the card starts flush with the slot's top edge, so
+       the shortfall only ever shows up as extra space underneath) - confirmed on a real Homey
+       device as a visibly larger gap under the chart than above the name, for a discrepancy
+       the local preview harness's own fixed-176px iframe reproduces exactly. .spark below
+       takes flex: 1 so it - not unstyled empty space - absorbs whatever the real slot height
+       turns out to be (176px today, but also any future value or on-device rounding). */
+    .card { padding: var(--homey-su-4); transition: opacity .5s ease, filter .5s ease; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; }
     .card.stale { opacity: 0.4; filter: grayscale(0.85); }
 
     /* Bespoke (non-Homey-semantic) tokens only - the sparkline's zones/line have no Homey
@@ -137,8 +147,14 @@
     .badge.no-data { color: var(--homey-text-color-light); background: color-mix(in srgb, var(--homey-text-color-light) 22%, transparent); }
 
     /* 50% taller than the original 56px/viewBox-60 chart (see the matching viewBox height and
-       sparkline() height argument in the script below - all three must move together). */
-    .spark { display: block; width: 100%; height: 84px; margin-top: var(--homey-su-2); overflow: visible; }
+       sparkline() height argument in the script below - all three must move together). flex: 1
+       (rather than a fixed height: 84px) lets this element absorb whatever vertical space is
+       actually left inside .card's now-100%-height box (see .card's own comment above) - the
+       viewBox stays a fixed "0 0 260 90" and sparkline() still generates geometry against a
+       height of 90, but preserveAspectRatio="none" already stretches that non-uniformly to
+       fit the element's real rendered box, so a few extra or fewer px here doesn't distort the
+       zone/line proportions, it just changes how tall the last row of pixels reaches. */
+    .spark { display: block; width: 100%; flex: 1 1 auto; min-height: 0; margin-top: var(--homey-su-2); overflow: visible; }
     .spark .zone.urgent-low { fill: var(--spark-zone-urgent-low); }
     .spark .zone.low { fill: var(--spark-zone-low); }
     .spark .zone.normal { fill: var(--spark-zone-normal); }
