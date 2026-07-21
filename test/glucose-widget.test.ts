@@ -263,10 +263,10 @@ test('nextWindowMs: an unrecognized current value resets to the narrowest option
   assert.equal(GD.nextWindowMs(999), options[0]);
 });
 
-test('windowLabel: formats a window duration as a plain "NH" pill label', () => {
+test('windowLabel: formats a window duration as a plain "Nh" pill label', () => {
   const HOUR = 60 * 60 * 1000;
-  assert.equal(GD.windowLabel(3 * HOUR), '3H');
-  assert.equal(GD.windowLabel(24 * HOUR), '24H');
+  assert.equal(GD.windowLabel(3 * HOUR), '3h');
+  assert.equal(GD.windowLabel(24 * HOUR), '24h');
 });
 
 test('dotStride: doubles at each wider WINDOW_OPTIONS_MS step, 1 for an unrecognized window', () => {

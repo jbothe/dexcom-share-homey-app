@@ -96,27 +96,45 @@
     .headrow { display: flex; align-items: flex-start; gap: var(--homey-su-2); }
     .meta { display: flex; flex-direction: column; align-items: flex-start; gap: 0; flex: 0 1 auto; min-width: 0; }
     .badge-wrap { flex: 1 1 auto; display: flex; align-items: flex-start; justify-content: center; min-width: 0; }
-    /* .ago sits alongside the window-indicator pill on the same line, not stacked. The pill
-       carries the "homey-text-small-light" class in the markup (same as .ago itself), so its
-       font-size/weight/line-height/color match .ago exactly rather than being a smaller/lighter
-       sub-label - only .window-pill's own background/radius/horizontal padding are added on top.
-       Vertical padding is deliberately 0: the pill's box height is then just that shared
-       line-height (same one .ago alone already occupied), so it doesn't grow this row - and by
-       extension .meta and the whole card - any taller than before the pill existed. min-width: 0
-       lets .ago itself still truncate/wrap first if the name above ever forces .meta narrow,
-       before the pill would. */
-    .ago-row { display: flex; align-items: center; gap: var(--homey-su-1); min-width: 0; }
+    /* .ago sits alongside the window-indicator pill on the same line, not stacked. The pill's
+       padding is top-heavy (see .window-pill below), which would normally read as visibly lower
+       than .ago's own unpadded text under align-items: center (center matches the two items'
+       boxes, not their text - a taller, top-padded box centers its text below the shared row
+       center). align-items: baseline instead matches the two items' text baselines directly:
+       flexbox pads out whichever item's baseline sits closer to its own top edge until every
+       item's baseline lines up, so .ago is pushed down by exactly the pill's own padding-top,
+       and the pill's extra padding-bottom (if any) just adds inert space below the aligned
+       baseline rather than affecting alignment. This is what actually keeps the two texts level
+       regardless of how asymmetric the pill's own vertical padding is. min-width: 0 lets .ago
+       itself still truncate/wrap first if the name above ever forces .meta narrow, before the
+       pill would. */
+    .ago-row { display: flex; align-items: baseline; gap: var(--homey-su-1); min-width: 0; }
     .ago { color: var(--homey-text-color-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* Shows which of GD.WINDOW_OPTIONS_MS the chart is currently displaying (tap the chart to
-       cycle - see cycleWindow below). Deliberately the same visual weight as .ago (small/light)
-       rather than styled like .badge - it's a passive state readout, not a second alarm-style
-       call to action. Empty (no payload yet) is hidden the same way .badge:empty is. */
+       cycle - see cycleWindow below). Carries the plain "homey-text-small" class in the markup
+       (not "-light") for size/line-height only - color and weight are both set explicitly here
+       instead, the same way .ago explicitly repeats its own color rather than trusting a "-light"
+       class variant: --homey-text-color-light keeps the pill reading as the same light gray as
+       .ago, and --homey-font-weight-medium bumps it off homey-text-small's own regular weight so
+       the pill reads as a distinct tappable control rather than plain text - it's still a passive
+       state readout though, not a second alarm-style call to action, so it stops short of .badge's
+       own bold/uppercase treatment. Padding is deliberately top-heavy (2px top, 0 bottom) rather
+       than symmetric - see .ago-row's own comment above for why align-items: baseline keeps this
+       from misaligning the two texts the way align-items: center previously did. Empty (no
+       payload yet) is hidden the same way .badge:empty is.
+       The color/font-weight overrides are written as "div.window-pill" rather than folded into
+       plain ".window-pill" so their specificity (0,1,1) beats the shared ".homey-text-small" class
+       (0,1,0) regardless of which stylesheet loads/appears second - a plain class-vs-class tie on
+       either property would otherwise depend on cascade order, which test/widget-preview.html's
+       own mock stylesheet (injected after this file's <style> tag) resolves the wrong way,
+       rendering the pill in the default dark text color at regular weight instead. */
     .window-pill {
       background: color-mix(in srgb, var(--homey-text-color-light) 16%, transparent);
       border-radius: var(--homey-border-radius-small);
-      padding: 0 var(--homey-su-1);
+      padding: 2px calc(var(--homey-su-1) + 1px) 0;
       white-space: nowrap;
     }
+    div.window-pill { color: var(--homey-text-color-light); font-weight: var(--homey-font-weight-medium); }
     .window-pill:empty { display: none; }
 
     .main { display: flex; align-items: center; gap: var(--homey-su-2); flex: 0 0 auto; }
@@ -155,11 +173,11 @@
        line-height-driven box already came to, so the header row's height is unchanged. Clients
        predating text-box (Chrome <133 / Safari <18.2) just keep the old uncorrected rendering. */
     .badge {
-      display: inline-block; padding: 1px var(--homey-su-2);
+      display: inline-block; padding: 2px calc(var(--homey-su-2) + 1px);
       border-radius: var(--homey-border-radius-default); text-transform: uppercase;
     }
     @supports (text-box: trim-both cap alphabetic) {
-      .badge { text-box: trim-both cap alphabetic; padding: var(--homey-su-2); }
+      .badge { text-box: trim-both cap alphabetic; padding: calc(var(--homey-su-2) + 1px); }
     }
     .badge:empty { display: none; }
     .badge.urgent-low { color: var(--homey-color-red); background: color-mix(in srgb, var(--homey-color-red) 22%, transparent); }
@@ -213,7 +231,7 @@
         <div class="name homey-text-bold" id="name"></div>
         <div class="ago-row">
           <div class="ago homey-text-small-light" id="ago"></div>
-          <div class="window-pill homey-text-small-light" id="windowPill"></div>
+          <div class="window-pill homey-text-small" id="windowPill"></div>
         </div>
       </div>
       <div class="badge-wrap">
@@ -287,10 +305,10 @@
         var idx = options.indexOf(currentMs);
         return idx === -1 ? options[0] : options[(idx + 1) % options.length];
       },
-      // Plain "3H"/"24H" style label for the window-indicator pill next to the "ago" text -
+      // Plain "3h"/"24h" style label for the window-indicator pill next to the "ago" text -
       // untranslated, same as the chart's own numeric tick-labels (GD.fmtTick), since it's a
       // number+unit abbreviation rather than a sentence.
-      windowLabel: function (windowMs) { return Math.round(windowMs / (60 * 60 * 1000)) + 'H'; },
+      windowLabel: function (windowMs) { return Math.round(windowMs / (60 * 60 * 1000)) + 'h'; },
       // Normal cadence is ~5 min (see DexcomPoller) - a gap wider than this between two
       // consecutive samples means at least one reading was actually missing, not just clock
       // jitter, and should draw as a visible break rather than a straight line bridging it.
