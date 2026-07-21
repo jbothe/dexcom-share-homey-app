@@ -16,11 +16,17 @@ followed brand's; since Homey's own guidelines direct third-party brand apps to 
 already name-identical to Dexcom's own upstream Share service, `com.dexcom.share` was chosen
 knowingly matching that pattern rather than a `family.bothe.*`-style personal-domain id — worth
 revisiting if Homey's app-store review ever treats a brand-owned-looking id as a compliance
-concern distinct from the name/icon guidance it does document), name "Dexcom Share" (paired
-device/driver display name "Dexcom" — see
-Localization below; internal code identifiers like the `DexcomFollowApp` class and the `follower`
-driver id/folder were deliberately left as-is, since renaming those is a much larger, purely
-internal refactor the display-name change didn't require). Modeled on the sibling app
+concern distinct from the name/icon guidance it does document). At the time that id was chosen,
+the app's own display name was "Dexcom Share" (identical to the upstream service name the id's
+`share` segment echoes) and the paired device/driver's was plain "Dexcom" — the two were later
+swapped (see Localization's "App/driver names swapped back" below), so the **current** display
+names are the reverse: app name **"Dexcom"**, driver/device name **"Dexcom Share"**. The id itself
+was never revisited after that later swap, so `com.dexcom.share`'s `share` segment now happens to
+echo the *driver's* display name rather than the app's own — coincidental, not re-derived, and
+low-stakes since app ids aren't user-facing the way display names are. Internal code identifiers
+like the `DexcomFollowApp` class and the `follower` driver id/folder were deliberately left as-is
+throughout all of this, since renaming those is a much larger, purely internal refactor none of
+these display-name changes required. Modeled on the sibling app
 `family.bothe.chargeiq`'s architecture and widget pattern — this file follows the same shape as
 that app's own `CLAUDE.md`.
 
@@ -664,6 +670,29 @@ alone (it genuinely names the upstream server). At the same time the two single-
 **"Display"** (glucose unit) and **"Data freshness"** (no-data timeout) were **collapsed into one
 group labelled "Data"** (de "Daten", nl "Gegevens"), so the settings form is now three groups:
 "Dexcom account" → "Data" → "Alarm thresholds".
+
+**App/driver names swapped back — this is the current, live state (commit `1402ea8`, dated after
+every paragraph above in this section):** everything above describes the app as "Dexcom Share" and
+the driver/device as "Dexcom". That was accurate for a while but is **no longer current**. The two
+were swapped again, in the other direction: `.homeycompose/app.json`'s `name` is now plain
+**"Dexcom"** (all three locales), and `drivers/follower/driver.compose.json`'s `name` is now
+**"Dexcom Share"** (all three locales) — confirmed against both the current files and the app's
+live Homey App Store listing, whose slug is `Dexcom`
+(`https://homey.app/en-au/app/com.dexcom.share/Dexcom/`). Treat this as the authoritative, shipped
+naming going forward; every "app is 'Dexcom Share', driver is 'Dexcom'" statement earlier in this
+section is historical record of an intermediate state, not current fact. The commit message frames
+the swap only as "matching Homey's own brand-app naming guidance," without further elaboration — a
+plausible reading (not independently confirmed beyond the commit message itself) is that "Dexcom"
+alone is the cleaner *brand* name for the app as a whole, while "Dexcom Share" — the specific
+upstream feature this app is a client for — better describes what each *paired device* actually
+represents (one Dexcom Share account/connection), the same app-vs-upstream-service distinction the
+Pairing and Units sections above already draw. Since the app is already live under "Dexcom",
+changing it again would be a real user-facing rename with no corresponding upside — don't "fix"
+`.homeycompose/app.json` back to "Dexcom Share" to match this section's earlier paragraphs; those
+paragraphs are what's stale, not the shipped app. The widget's device-picker setting label
+("User"/"Benutzer"/"Gebruiker") and the pair-screen title (now "Connect Dexcom account", refreshed
+independently by the Style Library restyle described above and unrelated to this swap) were
+untouched by it and remain accurate as written.
 
 ## Not yet verified
 
