@@ -4,7 +4,7 @@ A [Homey](https://homey.app/) app that follows one or more [Dexcom Share](https:
 CGM (continuous glucose monitor) accounts, bringing live glucose readings, trend, and alarms into
 your smart home.
 
-**Homey App Store listing:** https://homey.app/en-au/app/com.dexcom.share/Dexcom/
+**Homey App Store listing:** https://homey.app/a/com.dexcom.share/
 
 > **⚠️ Not for medical use.** This is an open-source, community-built project and is not supported
 > by Dexcom or any other company. It is not officially approved or regulated for diabetes therapy
