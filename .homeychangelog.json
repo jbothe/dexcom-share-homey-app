@@ -1,8 +1,11 @@
 {
   "1.0.0": {
-    "en": "First version!"
+    "en": "Initial release."
   },
   "1.0.1": {
-    "en": "Widget, pairing, and threshold-settings improvements."
+    "en": "Dashboard widget and pairing UI improvements."
+  },
+  "1.0.2": {
+    "en": "Dashboard widget now supports 3/6/12/24 hour windows. Improved API polling."
   }
 }
