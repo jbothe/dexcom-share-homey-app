@@ -50,11 +50,50 @@ const TRANSIENT_BACKOFF_MS = [60_000, 120_000, NORMAL_INTERVAL_MS];
 const ACCOUNT_ERROR_BACKOFF_MS = 15 * 60_000;
 /** requestImmediateRefresh() no-ops if the last tick was more recent than this. */
 const MIN_REFRESH_GAP_MS = 60_000;
+/** Floor for the reading-anchored delay below - never poll more often than this. */
+const MIN_POLL_DELAY_MS = 30_000;
+/**
+ * Backoff tiers for a poll that *succeeds* but doesn't yield a genuinely new reading (either
+ * Dexcom's next sample hasn't landed in its own pipeline yet - worth a quick retry - or the
+ * account has simply stopped producing data, in which case retrying every 30s forever would just
+ * hammer the API for nothing). Index by (consecutive-miss count - 1), capped at the last tier.
+ */
+const MISSED_READING_BACKOFF_MS = [MIN_POLL_DELAY_MS, 60_000, NORMAL_INTERVAL_MS];
 // Dexcom Share's own ceiling (dexcom-share-client's MAX_MINUTES/MAX_MAX_COUNT) - pulling the full
 // 24h lets the widget's history payload carry more than its own current fixed 3h display window
 // needs, so a future per-widget time-range setting can zoom out without any poller/payload change.
 const HISTORY_MINUTES = 1440;
 const HISTORY_MAX_COUNT = 288;
+
+/**
+ * Delay before the next poll, anchored to the *sample's own* timestamp rather than to when we
+ * happened to poll last - see the "polling cadence" note in CLAUDE.md. Scheduling a flat
+ * `NORMAL_INTERVAL_MS` after every poll compounds any lag between Dexcom's own sample clock and
+ * ours: if the first reading we ever see is already a couple minutes stale, every future poll
+ * lands that same couple minutes late forever. Targeting `lastKnownReadingTimeMs + 5min` instead
+ * re-aligns to Dexcom's clock on every tick, so a stale first fetch is corrected in one step.
+ *
+ * `readingAdvanced` is whether *this* tick's poll produced a genuinely new reading (vs. an empty
+ * poll or the same last-known reading repeated). When it didn't, there's no fresh timestamp to
+ * anchor to, so `missedReadingStreak` (consecutive misses, including this one) picks a short
+ * catch-up retry via `MISSED_READING_BACKOFF_MS`, settling back to the normal cadence rather than
+ * polling indefinitely fast. Exported for direct unit testing.
+ */
+export function computeNextPollDelayMs(
+  lastKnownReadingTimeMs: number | null,
+  nowMs: number,
+  readingAdvanced: boolean,
+  missedReadingStreak: number,
+): number {
+  if (!readingAdvanced) {
+    if (lastKnownReadingTimeMs === null) return NORMAL_INTERVAL_MS;
+    const tierIndex = Math.min(missedReadingStreak - 1, MISSED_READING_BACKOFF_MS.length - 1);
+    return MISSED_READING_BACKOFF_MS[Math.max(tierIndex, 0)];
+  }
+  const target = lastKnownReadingTimeMs! + NORMAL_INTERVAL_MS;
+  const delay = target - nowMs;
+  return Math.min(Math.max(delay, MIN_POLL_DELAY_MS), NORMAL_INTERVAL_MS);
+}
 
 function emptySnapshot(): GlucoseSnapshot {
   return {
@@ -113,6 +152,10 @@ export class DexcomPoller {
   private capabilitiesInitialized = false;
 
   private noDataInitialized = false;
+
+  /** Consecutive successful polls in a row that did not yield a genuinely new reading - see
+   *  computeNextPollDelayMs. Reset to 0 whenever a poll does produce a new reading. */
+  private missedReadingStreak = 0;
 
   private snapshot: GlucoseSnapshot = emptySnapshot();
 
@@ -217,7 +260,11 @@ export class DexcomPoller {
       this.transientFailureCount = 0;
       this.host.setAvailable();
       this.host.setWarning(null);
-      this.applyReadings(readings);
+      const readingAdvanced = this.applyReadings(readings);
+      this.missedReadingStreak = readingAdvanced ? 0 : this.missedReadingStreak + 1;
+      nextDelay = computeNextPollDelayMs(
+        this.lastReadingDatetime, this.now(), readingAdvanced, this.missedReadingStreak,
+      );
     } catch (error) {
       nextDelay = this.handleError(error, trigger);
     }
@@ -284,7 +331,8 @@ export class DexcomPoller {
     this.capabilitiesInitialized = true;
   }
 
-  private applyReadings(readings: DexcomReadingLike[]): void {
+  /** Returns whether this poll produced a genuinely new reading - see computeNextPollDelayMs. */
+  private applyReadings(readings: DexcomReadingLike[]): boolean {
     if (readings.length === 0) {
       // A successful poll can legitimately return nothing - most often a freshly paired account
       // whose sensor session hasn't produced a reading yet (driver.ts's own pairing check treats
@@ -297,7 +345,7 @@ export class DexcomPoller {
       // written at all. measure_glucose/glucose_trend are deliberately left alone: unlike the
       // alarms, they have no meaningful "nothing wrong" value to assert without a reading.
       this.initializeAlarmCapabilities();
-      return;
+      return false;
     }
     const latest = readings[0];
     // readings is newest-first; reversed puts latest last, so its corrected time is computed
@@ -385,6 +433,7 @@ export class DexcomPoller {
     }
 
     this.capabilitiesInitialized = true;
+    return isNewReading;
   }
 
   private applyNoDataAlarm(): void {

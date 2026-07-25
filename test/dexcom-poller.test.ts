@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import {
-  DexcomPoller, DexcomClientLike, DexcomCredentials, DexcomReadingLike,
+  DexcomPoller, DexcomClientLike, DexcomCredentials, DexcomReadingLike, computeNextPollDelayMs,
 } from '../lib/dexcom/DexcomPoller';
 import { DexcomPollerHost, GlucoseTokens, Units } from '../lib/dexcom/types';
 
@@ -619,4 +619,95 @@ test('glucose_changed fires only when the reading itself is new, not every tick'
     1,
     'same reading timestamp repeated across polls does not re-fire',
   );
+});
+
+test('computeNextPollDelayMs targets 5 minutes after the reading\'s own timestamp, catching up when the reading was already stale on fetch', () => {
+  // Fetched 2 minutes after the sample was actually taken - the old flat "now + 5min" schedule
+  // would poll every future sample exactly 2 minutes late, forever. Anchoring to the sample's
+  // own timestamp instead should shorten just this one delay by that same 2 minutes.
+  const readingTimeMs = 0;
+  const nowMs = 2 * 60_000;
+  assert.equal(computeNextPollDelayMs(readingTimeMs, nowMs, true, 0), 3 * 60_000);
+});
+
+test('computeNextPollDelayMs clamps to a floor rather than polling immediately when already well past the target', () => {
+  const readingTimeMs = 0;
+  const nowMs = 10 * 60_000; // e.g. after a long error backoff delayed the tick
+  assert.equal(computeNextPollDelayMs(readingTimeMs, nowMs, true, 0), 30_000);
+});
+
+test('computeNextPollDelayMs clamps to the normal cadence rather than waiting longer than usual', () => {
+  const readingTimeMs = 0;
+  const nowMs = 0; // reading fetched exactly on time - no lag to correct for
+  assert.equal(computeNextPollDelayMs(readingTimeMs, nowMs, true, 0), 5 * 60_000);
+});
+
+test('computeNextPollDelayMs falls back to the normal cadence when there is no reading to anchor to', () => {
+  assert.equal(computeNextPollDelayMs(null, 0, false, 1), 5 * 60_000);
+});
+
+test('computeNextPollDelayMs backs off in short tiers on repeated misses, then settles at the normal cadence', () => {
+  assert.equal(computeNextPollDelayMs(0, 0, false, 1), 30_000, 'first miss: quick retry');
+  assert.equal(computeNextPollDelayMs(0, 0, false, 2), 60_000, 'second miss: a bit longer');
+  assert.equal(computeNextPollDelayMs(0, 0, false, 3), 5 * 60_000, 'third miss: settle to normal cadence');
+  assert.equal(computeNextPollDelayMs(0, 0, false, 10), 5 * 60_000, 'stays capped, never grows further');
+});
+
+test('self-corrects a lag between the poll clock and Dexcom\'s own sample clock, instead of repeating it forever', async () => {
+  // Regression test for the reported symptom: the very first successful poll happens 2 minutes
+  // after Dexcom's own 5-minute sample boundary (e.g. the app started mid-cycle). Scheduling a
+  // flat 5 minutes after each poll (the old behavior) would poll every future sample exactly 2
+  // minutes late, forever - the app would never actually catch up. Anchoring to the reading's own
+  // timestamp should correct that lag on the very next tick, and then stay aligned indefinitely.
+  const clock = new FakeClock();
+  clock.nowMs = 2 * 60_000;
+  const host = new FakeHost();
+  const readingTimesSeen: number[] = [];
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => new FakeClient(async () => {
+      const sampleBoundary = Math.floor(clock.nowMs / (5 * 60_000)) * (5 * 60_000);
+      readingTimesSeen.push(sampleBoundary);
+      return [reading(100, 'Flat', new Date(sampleBoundary))];
+    }),
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  await poller.start();
+  assert.equal(readingTimesSeen[0], 0, 'first poll only sees the stale t=0 sample, 2 minutes late');
+
+  await clock.advance(3 * 60_000);
+  assert.equal(clock.nowMs, 5 * 60_000, 'the catch-up tick lands exactly on the next 5-minute boundary');
+  assert.equal(readingTimesSeen[1], 5 * 60_000, 'now polling exactly as each new sample appears, no lag');
+
+  await clock.advance(5 * 60_000);
+  assert.equal(readingTimesSeen[2], 10 * 60_000, 'stays aligned on subsequent polls too');
+});
+
+test('a stalled account (no new reading) retries quickly at first, then settles back to the normal cadence rather than polling indefinitely fast', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost();
+  const fixedReadingTime = new Date(0);
+  let client!: FakeClient;
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => {
+      client = new FakeClient(async () => [reading(100, 'Flat', fixedReadingTime)]);
+      return client;
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  await poller.start();
+  assert.equal(client.calls, 1);
+
+  await clock.advance(10 * 60_000);
+  // start (t=0) + normal-cadence poll (t=5:00, first miss) + two short catch-up retries
+  // (t=5:00:30, t=5:01:30) before settling back to the normal cadence - never faster than the
+  // 30-second floor, and not still retrying quickly 10 minutes into a genuinely stalled account.
+  assert.equal(client.calls, 4, `expected a bounded, tapering retry count, got ${client.calls}`);
 });
