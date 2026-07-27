@@ -172,9 +172,15 @@ export class DexcomPoller {
     this.clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   }
 
+  /**
+   * Deliberately does NOT call refreshConfig() itself: tick() already builds the client when it
+   * doesn't have one, and does it inside its own error handling. Calling it here as well would
+   * put the very first client build outside any catch, so a clientFactory failure (e.g. the
+   * ESM dynamic import in client.ts failing on a real Homey) would reject start() before it ever
+   * reached scheduleNextTick() - leaving the device with no timer at all and so no retry, ever.
+   */
   async start(): Promise<void> {
     this.stopped = false;
-    await this.refreshConfig();
     await this.tick('start');
   }
 
@@ -190,17 +196,28 @@ export class DexcomPoller {
     return this.snapshot;
   }
 
-  /** Rebuild the client only if username/password/region actually changed. */
+  /**
+   * Rebuild the client only if username/password/region actually changed.
+   *
+   * The fingerprint is committed only *after* the build resolves, and any client built from the
+   * now-superseded credentials is dropped before the attempt. Recording the fingerprint up front
+   * instead meant a failed build left the poller claiming to be current while still holding the
+   * previous account's client - so every later refreshConfig() saw a matching fingerprint plus a
+   * live client, skipped the rebuild, and went on polling the old account indefinitely while the
+   * device's own settings showed the new one. Leaving `client` null on failure is what lets
+   * tick() retry the build on its next run instead.
+   */
   async refreshConfig(): Promise<void> {
     const username = this.host.getSetting<string>('username') ?? '';
     const password = this.host.getSetting<string>('password') ?? '';
     const region = this.host.getSetting<string>('region') ?? 'us';
     const fingerprint = `${username} ${password} ${region}`;
-    if (fingerprint !== this.credentialsFingerprint || !this.client) {
-      this.credentialsFingerprint = fingerprint;
-      this.client = await this.clientFactory({ username, password, region });
-      this.transientFailureCount = 0;
-    }
+    if (fingerprint === this.credentialsFingerprint && this.client) return;
+    this.client = null;
+    const client = await this.clientFactory({ username, password, region });
+    this.client = client;
+    this.credentialsFingerprint = fingerprint;
+    this.transientFailureCount = 0;
   }
 
   /** Rate-limited manual refresh entry point for the "Refresh glucose now" flow action. */
@@ -250,11 +267,16 @@ export class DexcomPoller {
 
   private async tick(trigger: string): Promise<void> {
     this.lastTickAt = this.now();
-    if (!this.client) {
-      await this.refreshConfig();
-    }
     let nextDelay = NORMAL_INTERVAL_MS;
     try {
+      // Inside the try, not ahead of it: building the client can fail on its own (client.ts's
+      // dynamic ESM import, or the constructor rejecting its arguments), and an uncaught failure
+      // here would skip applyNoDataAlarm() and - critically - scheduleNextTick() below, killing
+      // this device's self-rearming loop outright with no timer left to recover it. Treated as
+      // just another tick failure instead, so it backs off and retries like any other.
+      if (!this.client) {
+        await this.refreshConfig();
+      }
       const readings = await this.client!.getGlucoseReadings(HISTORY_MINUTES, HISTORY_MAX_COUNT);
       this.host.log(`[${trigger}] Dexcom poll succeeded, ${readings.length} reading(s)`);
       this.transientFailureCount = 0;

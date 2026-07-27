@@ -192,6 +192,29 @@ test('sparkline: each dot and its incoming line carry the severity zone the arri
   assert.deepEqual(result.segments.map((s) => s.cls), ['low', 'urgent-low', 'high']);
 });
 
+/**
+ * A reading exactly ON a threshold must land in the same band lib/dexcom/glucoseAlarms.ts's
+ * classifyGlucose() puts it in, since that drives the badge sitting directly above this chart.
+ * The two low bounds are inclusive there (<=), and were exclusive (<) here - so at the *default*
+ * thresholds, a reading of exactly 70 drew a green normal-zone dot under an orange "Low" badge,
+ * and one of exactly 55 an orange low-zone dot under a red "Urgent Low" badge.
+ */
+test('sparkline: a sample exactly on a threshold lands in the same zone classifyGlucose assigns it', () => {
+  const history = [55, 70, 180].map((v, i) => ({ t: SPARK_NOW - (2 - i) * 300_000, v }));
+  const result = GD.sparkline(history, 'mgdl', {
+    width: 260, height: 90, urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180, nowMs: SPARK_NOW,
+  }) as { dots: { cls: string }[] };
+  assert.deepEqual(result.dots.map((d) => d.cls), ['urgent-low', 'low', 'high']);
+});
+
+test('sparkline: the value just above a threshold still belongs to the band above it', () => {
+  const history = [56, 71].map((v, i) => ({ t: SPARK_NOW - (1 - i) * 300_000, v }));
+  const result = GD.sparkline(history, 'mgdl', {
+    width: 260, height: 90, urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180, nowMs: SPARK_NOW,
+  }) as { dots: { cls: string }[] };
+  assert.deepEqual(result.dots.map((d) => d.cls), ['low', 'normal']);
+});
+
 test('sparkline: without thresholds every sample classifies as normal rather than erroring', () => {
   const history = [{ t: SPARK_NOW - 300_000, v: 100 }, { t: SPARK_NOW, v: 105 }];
   const result = GD.sparkline(history, 'mgdl', { width: 260, height: 90, nowMs: SPARK_NOW }) as {

@@ -479,6 +479,74 @@ test('client is not rebuilt when only threshold settings change', async () => {
   assert.equal(factoryCalls, 2, 'credential change does rebuild the client');
 });
 
+test('a clientFactory failure still schedules a retry rather than killing the poll loop outright', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost({ username: 'alice', password: 'secret', region: 'us' });
+  let factoryCalls = 0;
+  // Fails the first two builds (e.g. client.ts's dynamic ESM import failing), then recovers.
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => {
+      factoryCalls += 1;
+      if (factoryCalls <= 2) throw new Error('ESM import failed');
+      return new FakeClient(async () => [reading(100, 'Flat', new Date(clock.nowMs))]);
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  // start() must not reject: a build failure is a tick failure, handled like any other.
+  await poller.start();
+  assert.equal(factoryCalls, 1);
+  assert.equal(host.capabilities.alarm_no_data, true, 'no-data is still evaluated on a failed tick');
+
+  // The whole point: a timer was armed, so the device retries instead of going silent forever.
+  await clock.advance(60_000);
+  assert.equal(factoryCalls, 2, 'retried on the first transient backoff tier');
+
+  await clock.advance(120_000);
+  assert.equal(factoryCalls, 3, 'retried again on the second tier, and this build succeeds');
+  assert.equal(host.capabilities.measure_glucose, 100, 'recovers and polls normally once built');
+  assert.equal(host.capabilities.alarm_no_data, false);
+});
+
+test('a failed client rebuild does not leave the poller polling as the previous account', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost({ username: 'alice', password: 'secret', region: 'us' });
+  const built: string[] = [];
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: (credentials: DexcomCredentials) => {
+      built.push(credentials.username);
+      if (credentials.username === 'broken') throw new Error('construction rejected');
+      return new FakeClient(async () => [reading(100, 'Flat', new Date(clock.nowMs))]);
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  await poller.start();
+  assert.deepEqual(built, ['alice']);
+
+  // Credentials edited to something whose client build fails. The fingerprint must NOT be
+  // recorded as current here: doing so used to make every later refreshConfig() see a matching
+  // fingerprint plus the still-live 'alice' client, skip the rebuild, and go on polling as alice
+  // indefinitely while the device's own settings read 'broken'.
+  host.settings.username = 'broken';
+  await assert.rejects(() => poller.refreshConfig(), /construction rejected/);
+  assert.deepEqual(built, ['alice', 'broken']);
+
+  await assert.rejects(() => poller.refreshConfig(), /construction rejected/);
+  assert.deepEqual(built, ['alice', 'broken', 'broken'], 'retries the build instead of assuming it is current');
+
+  // Once the credentials are valid again, the very next attempt builds with them.
+  host.settings.username = 'carol';
+  await poller.refreshConfig();
+  assert.deepEqual(built, ['alice', 'broken', 'broken', 'carol']);
+});
+
 test('requestImmediateRefresh is a no-op when called too soon after the last tick', async () => {
   const clock = new FakeClock();
   const host = new FakeHost();

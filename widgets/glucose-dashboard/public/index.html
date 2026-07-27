@@ -452,9 +452,18 @@
         // Same threshold cuts as the shaded zones above, applied to a single reading - a missing
         // threshold just can't push the value below/above it, so classification degrades to
         // 'normal' rather than erroring (matching how those zones drop when a bound is absent).
+        //
+        // The two low bounds are inclusive (<=), NOT exclusive, so this matches
+        // lib/dexcom/glucoseAlarms.ts's classifyGlucose() exactly at the boundary - that decides
+        // the alarm capabilities, and by way of payload.alarms the badge sitting right above this
+        // chart. They disagreed once, and at the *default* thresholds: a reading of exactly 70
+        // showed an orange "Low" badge above a green dot in the normal zone (and one of exactly
+        // 55, a red "Urgent Low" badge above an orange low-zone dot). Same class of bug as the
+        // badge's own text-vs-color split (see badgeText/BADGE_CLASS above): keep the comparison
+        // operators here in step with classifyGlucose's if either side ever changes.
         var zoneClass = function (mgdl) {
-          if (opts.urgentLowMgDl != null && mgdl < opts.urgentLowMgDl) return 'urgent-low';
-          if (opts.lowMgDl != null && mgdl < opts.lowMgDl) return 'low';
+          if (opts.urgentLowMgDl != null && mgdl <= opts.urgentLowMgDl) return 'urgent-low';
+          if (opts.lowMgDl != null && mgdl <= opts.lowMgDl) return 'low';
           if (opts.highMgDl != null && mgdl >= opts.highMgDl) return 'high';
           return 'normal';
         };
