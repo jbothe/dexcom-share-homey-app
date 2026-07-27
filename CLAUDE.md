@@ -343,10 +343,13 @@ verbatim under `test/homey-css/` (25 files, ~500KB, original names and layout so
 firmware update changed the pair screen. The harness probes every file on load and names any that
 are missing rather than silently rendering unstyled. Details in that folder's own README.
 
-**No mock fallback here.** `test/homey-mock.css` is wrong in ways that mislead silently — see the
-`--homey-su` bullet below, plus its invented `.homey-text-*` classes and `[data-theme]` dark
-mechanism. It survives only because `test/widget-preview.html` still loads it; delete it once the
-widget harness moves to real CSS.
+**No mock fallback here — and none in the widget harness either, not anymore.**
+`test/homey-mock.css` used to be wrong in ways that misled silently (invented `.homey-text-*`
+classes, an invented `[data-theme]` dark mechanism, and half-scale `--homey-su-*` spacing — see
+the "widget's measured `height: 176`" note in the Widget section's own history). It's now deleted
+outright: `test/widget-preview.html` was rewritten to load real Homey widget CSS from
+`test/homey-css/widgets/` instead, the same real-CSS approach this pair-view harness already used
+(see the Widget section for details, including a genuinely new finding that migration surfaced).
 - `css/homey.css` is an **import manifest only** — `@import`s of `_homey-variables.css` /
   `_base.css` / `_homey-typography.css` / `_homey-button.css` / `_homey-form.css` /
   `_homey-icon.css` plus the three `font/*` sheets. Those partials carry the Style Library; the
@@ -398,15 +401,18 @@ filter on the frame needs no DOM access, a re-theme would. The harness reproduce
   hardcoded colour is not the silent light-only bug it would be under a themed system, since it
   inverts too. `login.html`'s comment claiming the Style Library gives it "dark mode … from Homey's
   own real in-app theme" is wrong on the dark half: dark comes from the inversion.
-- **`--homey-su` is 8px, so every `--homey-su-*` in `homey-mock.css` is half the real value** (mock
-  `--homey-su: 4px`), and the real scale stops at `-6` where the mock invented `-7`/`-8`.
-  `.hy-view`'s padding is `0 16px 16px`, not the mock's `0 8px 8px`. Likewise
-  `--homey-font-size-large` is 24px not 20px (20px is the real `-medium`, which the mock lacks,
-  alongside a real `-xlarge: 32px`), and the radius token is `--homey-border-radius: 10px` /
-  `-small: 5px`, not the mock's invented `--homey-border-radius-default: 8px` / `-small: 4px`.
-  **Treat any spacing or sizing judgement the mock informed as unreliable** — including the
-  widget's measured `height: 176`, taken by injecting `homey-mock.css` and so resting on half-size
-  spacing tokens (see Widget).
+- **`--homey-su` is 8px in this pair-view Style Library, so every `--homey-su-*` in the old
+  `homey-mock.css` was half the real value** (mock `--homey-su: 4px`), and the real scale stops at
+  `-6` where the mock invented `-7`/`-8`. `.hy-view`'s padding is `0 16px 16px`, not the mock's
+  `0 8px 8px`. Likewise `--homey-font-size-large` is 24px not 20px (20px is the real `-medium`,
+  which the mock lacks, alongside a real `-xlarge: 32px`), and the radius token is
+  `--homey-border-radius: 10px` / `-small: 5px`, not the mock's invented
+  `--homey-border-radius-default: 8px` / `-small: 4px`. **This was pair-view-specific, not a
+  general "the mock is half-scale" rule** — the *widget* Style Library's own `--homey-su` is
+  genuinely `4px` (a separate token set entirely, see `test/homey-css/widgets/README.md`), so the
+  widget's measured `height: 176` was never actually resting on a half-scale assumption the way an
+  earlier revision of this file speculated; that speculation is resolved (and superseded) by the
+  Widget section's own re-verification against the real, non-mock widget CSS.
 - `.homey-header` really does carry `border-bottom: 1px solid var(--homey-color-line)`, so
   `login.html`'s override removes something that exists. It also has `-16px` left/right margins
   with matching padding, deliberately bleeding to the edges of `.hy-view`'s own padding.
@@ -517,45 +523,67 @@ badge, unlike Dexcom's own official app (which just shows "No Data"). The `ago` 
 sparkline's history are deliberately left alone in this state — knowing *how* stale, and what the
 last several readings looked like before the gap, is still useful context.
 
-For visual iteration without a real Homey device: `test/widget-preview.html` + `test/homey-mock.css`
-(dev-only, not part of `npm test`, never shipped — nothing in `widget.compose.json`/`app.json`
-references `test/`), copied/adapted from chargeiq's own equivalent tooling. Loads the real,
-unmodified widget file in an iframe and injects the mock stylesheet after load — it calls the
-widget's `render()` directly (bypassing `onHomeyReady`/the device-binding setting entirely, so it
-can't exercise that step, only the presentation logic). **Must be served over http(s)** (e.g.
-`python3 -m http.server` from the repo root), not opened via `file://` — same-origin iframe access
-is required. Has Light/Dark/Auto theme buttons and preset shortcut buttons (normal, urgent-low,
-low, high, no-data, mmol/L, rapid-falling, before-first-broadcast) that fill a JSON textarea — the
-flat single-device payload shape `broadcastDeviceState` sends — for "Apply state" rather than
-rendering immediately. Verified via this harness: value/unit/trend rendering, severity badge +
-sparkline coloring (urgent-low=red, low/high=orange), the four shaded severity zones (see below),
-the empty (no-broadcast-yet) placeholder, mmol/L conversion, and the staleness dim — in both light
-and dark.
-`homey-mock.css`'s values are reasonable approximations (Homey docs don't publish exact
-border-radius px), not authoritative — real on-device verification (exact fonts, real color/radius
-values, and the actual autocomplete-setting device-picker plumbing) still needs `homey app run`.
+For visual iteration without a real Homey device: `test/widget-preview.html` (dev-only, not part
+of `npm test`, never shipped — nothing in `widget.compose.json`/`app.json` references `test/`).
+Loads the real, unmodified widget file in an iframe and links Homey's own **real** widget Style
+Library from `test/homey-css/widgets/` (not an approximation — see that folder's own README) —
+the same real-CSS approach `family.bothe.chargeiq`'s own `test/widget-preview.html` pioneered,
+replacing an earlier `test/homey-mock.css` this harness used at first (deleted outright once this
+migration landed; see the widgets README's "Dark mode" section for why Light/Dark toggles both a
+real `.homey-dark-mode` class *and* the widget's own `[data-theme]` attribute together, and what
+"OS only" clears instead — **not** a third Homey theme; see "Not yet verified" below). The harness
+calls the widget's `render()` directly (bypassing `onHomeyReady`/the device-binding setting
+entirely, so it can't exercise that step, only the presentation logic). **Must be served over
+http(s)** (e.g. `python3 -m http.server` from the repo root), not opened via `file://` —
+same-origin iframe access is required. Has Light/Dark/"OS only" theme buttons, chart-mode buttons
+(normal/capped/log), a stale toggle, and preset shortcut buttons
+(normal, urgent-low, low, high, no-data, mmol/L, rapid-falling, dense 24h history, before-first-
+broadcast) that fill a JSON textarea — the flat single-device payload shape `broadcastDeviceState`
+sends — for "Apply state" rather than rendering immediately. Verified via this harness:
+value/unit/trend rendering, severity badge + sparkline coloring (urgent-low=red, low/high=orange),
+the four shaded severity zones (see below), the empty (no-broadcast-yet) placeholder, mmol/L
+conversion, and the staleness dim — in both light and dark, now against real Homey fonts/colors/
+spacing rather than an approximation. Real on-device verification of the actual
+autocomplete-setting device-picker plumbing (something no static-file harness can exercise) still
+needs `homey app run`.
 
-**`widget.compose.json`'s `"height": 176` is calculated, not guessed.** The card's content height
-is fully static — the sparkline's y-domain is now the fixed Dexcom sensor range (see `GD.sparkline`
-above) rather than data-driven, and the header never wraps to a second line at the widget's actual
-on-dashboard width — so every possible payload state renders to the same measured height, measured
-by injecting `homey-mock.css` into the real `public/index.html` directly (not the iframe harness)
-and calling `render()` at a 380px viewport width. Re-measure the same way (`render()` at 380px
-width, badge and no-badge states, `mgdl` and `mmol`) if the header/badge/chart CSS changes again,
-rather than hand-adjusting this number. The iframe harness's own box (`test/widget-preview.html`'s
-`iframe` rule) is sized `380x176` to match this measured height, not a wider approximation.
+**`widget.compose.json`'s `"height": 176` is calculated, not guessed — and has now been
+re-verified against the real, non-mock CSS, not just the mock that originally produced it.** The
+sparkline's y-domain is the fixed Dexcom sensor range (see `GD.sparkline` above) rather than
+data-driven, so the chart itself never needs more or less room based on the data it's showing;
+what *can* still vary is the header row's own height, which real Roboto rendering turned out to
+affect (see the next paragraph). Measured by injecting `test/homey-css/widgets/css/homey.widgets.css`
+into the real `public/index.html` directly (not the iframe harness, and overriding only the
+`html`/`body` container height, not `.card`'s own `height: 100%` - that flex rule is exactly what
+makes `.spark`'s `flex: 1 1 auto` absorb whatever's left, so it never overflows regardless of
+container size; the actual test is whether the *content* still reads as intended at the real
+176px, not whether it clips) and calling `render()` at a 380px viewport width. Confirmed: every
+state - badge/no-badge x `mgdl`/`mmol` - fits inside 176px with room to spare (`.spark` never drops
+below ~78px even in the tallest-header case below). Re-measure the same way (`render()` at 380px
+width, badge and no-badge states, `mgdl` and `mmol`, using the real CSS tree, not a mock) if the
+header/badge/chart CSS changes again, rather than hand-adjusting this number. The iframe harness's
+own box (`test/widget-preview.html`'s `iframe` rule) is sized `380x176` to match this measured
+height, not a wider approximation.
 
-Since the alarm pill moved into its own `.badge-wrap` flex cell, top-aligned alongside `.meta` and
-`.main` rather than sitting inline at the name's baseline (see the header-row comment above), the
-badge no longer nudges the row taller when present: all four measured states (badge/no-badge ×
-`mgdl`/`mmol`) now render to the *same* 172px, not the old two-height split (174px badge-less /
-~176px with a badge) that motivated the original buffer. `176` is that uniform 172px plus a small
-buffer, not the true minimum — `homey-mock.css`'s font metrics are its own approximations (see
-above), so a real-device font could plausibly render a few px taller than this mock. The badge's
-`text-box` trim (see below) is still font-dependent (30.3px against the mock's own font) but no
-longer height-determining here, since the badge (30.3px) sits well under the row's own height (48px,
-set by `.meta`'s stacked name + "time ago" lines) — re-measure it anyway if a future change makes
-the badge tall enough to exceed that.
+**A real finding from this re-verification: the header row does *not* always hold at one height
+the way the mock-based measurement once concluded.** Against real Roboto Bold at the widget's own
+17px/24px-line-height default size (`.badge`'s font, via `homey-text-bold` - `_homey-text.css`),
+`"Urgent Low"` (`locales/en.json`'s `widget.glucoseDashboard.urgentLow` - the *only* two-word badge
+label; every other one - `Low`/`High`/`No Data` - is one line at this width) sits right at the
+wrap boundary of `.badge-wrap`'s available width (~123px available vs. ~124px needed for the
+uppercased text at one line, a margin of under 2px) and wraps to two lines, growing the header row
+from 46px to 54px and shrinking `.spark` from 90px to 82px to compensate (measured via
+`getBoundingClientRect()` on `.headrow`/`#spark`, both states rendered inside the real, unresized
+176px card). **No overflow results either way** - `.spark`'s `flex: 1 1 auto` just yields the
+extra 8px, same mechanism that already made the domain fully static regardless of data - so `176`
+is still correct and no code change follows from this. It's flagged here because it's a genuinely
+new fact this migration surfaced (the old mock's fallback font stack happened not to wrap this
+exact string at this exact width, so the "badge never nudges the row taller" claim in an earlier
+revision of this file was an artifact of testing against the wrong font, not something actually
+true of the real widget) - worth re-checking with the same method if `urgentLow`'s translated
+copy, the badge's font-size, or `.badge-wrap`'s available width ever change, since the current
+margin is thin enough that a future change in any one of those could tip it the other way in a
+locale that isn't English.
 
 **Sparkline x-axis is a fixed-width window (`opts.windowMs`, one of `GD.WINDOW_OPTIONS_MS` — 3h/6h/
 12h/24h) anchored to `opts.nowMs` (defaults to `Date.now()`), not to the actual first/last sample
@@ -789,11 +817,16 @@ That widget fix took three attempts to get right - the first two both tried to k
 the autocomplete-setting rewrite (modeled on a real published app, `RonnyWinkler/homey.tesla`)
 actually worked - worth remembering if a *future* SDK/Homey firmware change makes this area act up
 again: re-verify from real device logs before assuming either of those two earlier approaches
-would now work. **The badge's `text-box` centering fix is on-device-reported but not yet
-on-device-confirmed**: the bottom-heavy pill was only ever observed on a real Homey (never
-reproducible in the harness, see the Widget section), so whether the fix actually lands there — and
-whether that client is even new enough to support `text-box` at all — still needs a look at the real
-dashboard. Still otherwise unconfirmed on-device: whether `login.html`'s Homey Style Library
+would now work. **The badge's `text-box` centering fix is on-device-reported but still not fully
+on-device-confirmed, though the widget harness moving to real CSS (see the Widget section) closed
+part of this gap**: with the real Roboto font and Homey's own `_homey-text.css` sizing loaded
+(rather than the old mock's system-font stack, where the effect measured as an invisible ~0.5px),
+`CSS.supports('text-box', 'trim-both cap alphabetic')` and a direct measurement of a single-line
+badge both now confirm the property parses and actually trims the box as designed in this harness's
+own Chromium engine (Chrome 148) - the bottom-heavy pill *is* now reproducible here, at least on
+that engine. What's still unconfirmed is a real Homey widget webview's own engine/version - whether
+it's new enough to support `text-box` at all remains a real-dashboard-only question. Still
+otherwise unconfirmed on-device: whether `login.html`'s Homey Style Library
 classes (`.homey-form-*`/`.homey-button-*`/`.homey-header`, see the Pairing section's styling
 bullet) actually render as documented on a real pair view — the base `Homey` client bridge
 (`.emit()`/`.showView()`/`.__()`) is already confirmed working there, just not this specific
@@ -810,7 +843,23 @@ above) — untested by design, same as the rest of the thin Homey adapters (see 
 unconfirmed: the tap-to-cycle window control's `HomeyRef.hapticFeedback()` call (see the Widget
 section) — the preview harness has no `HomeyRef` at all (see its own doc comment), so the tap
 cycling/thinning/pill logic was verified there, but the haptic itself has never fired outside a real
-Homey widget context.
+Homey widget context. **Also unconfirmed: exactly how Homey's own Light/Dark/System app theme
+setting (Settings > Appearance) surfaces into a widget's webview.** The widget's real
+`_homey-variables.css` (`test/homey-css/widgets/`) is purely class-based (`.homey-dark-mode`, no
+`@media` block at all), so whatever Homey injects for its own semantic `--homey-*` tokens is
+confirmed to be that class, not a live media query — but *what triggers Homey to toggle it* isn't
+independently confirmed here. `family.bothe.chargeiq`'s own power-flow widget asserts (in its own
+top-of-file comment, not flagged there as on-device-confirmed either) that a real device's webview
+reflects the raw OS `prefers-color-scheme` even when Homey's own resolved theme is forced to
+differ — which would mean picking "System" doesn't change anything structurally, it just removes
+the forcing, and any explicit Light/Dark pick can genuinely diverge from the OS. This app's own
+`glucose-dashboard` widget has a real stake in which is true: its four `--spark-zone-*` tokens (no
+Homey-provided equivalent, so they can only react to theme via `@media (prefers-color-scheme:
+dark)` — see the Widget section) would follow the OS in that scenario, independent of whatever
+Homey's own theme resolves to. `test/widget-preview.html`'s "OS only" button exists specifically to
+preview that divergence, but the underlying assumption it's built on is inherited from chargeiq's
+comment, not verified against a real dexcom device with Homey's theme and the OS phone deliberately
+set apart.
 
 ## Art
 **The app icon (`assets/icon.svg`) is Dexcom's own wordmark** — the supplied `dexcom.svg` brand

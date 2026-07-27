@@ -33,20 +33,29 @@
        equivalent. The four --spark-zone-* tokens are the only ones that need a per-theme
        adjustment (same accepted exception power-flow documents for its own decorative gradient
        tokens): Homey's own palette values (--homey-color-*) are fixed across light/dark (see
-       homey-mock.css), so a flat color-mix reads as light shading on a light card but turns a
-       near-black one into solid blocks of color. --spark-line-normal is deliberately NOT in
+       test/homey-css/widgets/css/_homey-variables.css's .homey-dark-mode block), so a flat
+       color-mix reads as light shading on a light card but turns a near-black one into solid
+       blocks of color. --spark-line-normal is deliberately NOT in
        that group - green in both themes (the normal-zone reading color), so it's set once in
        :root and never overridden.
 
        Each theme is spelled out in full, three times over, and that repetition is load-bearing:
-       every block must list all four zone tokens. Homey's real dashboard only ever takes the
-       @media (prefers-color-scheme: dark) path - the [data-theme] blocks exist purely for the
-       dev preview harness's own Light/Dark buttons (test/widget-preview.html), which is the
-       only thing that ever sets that attribute. So the harness cannot show you what the real
-       device renders unless the @media block and the [data-theme='dark'] block stay in sync:
-       a dark-mode value edited in one but not the other looks perfect in the harness and ships
-       broken. (prefers-color-scheme is itself only a best-effort signal, per power-flow's own
-       documented caveat that it can drift from Homey's actual, OS-independent theme setting.)
+       every block must list all four zone tokens. A real device only ever takes the
+       @media (prefers-color-scheme: dark) path for these four tokens - Homey provides no
+       semantic hook for "shaded glucose zone" colors the way it does for --homey-text-color et
+       al, so this file has no other mechanism available to it. The [data-theme] blocks exist
+       purely for the dev preview harness's own Light/Dark buttons (test/widget-preview.html),
+       which are the only thing that ever sets that attribute - a real device never does. So the
+       harness cannot show you what the real device renders unless the @media block and the
+       [data-theme='dark'] block stay in sync: a dark-mode value edited in one but not the other
+       looks perfect in the harness and ships broken. test/widget-preview.html's own "OS only"
+       button clears both mechanisms, so only a real prefers-color-scheme signal drives these
+       four tokens - see its own comment for why that's not a synthetic state: Homey's own app has
+       a Light/Dark/System theme choice, and it's unconfirmed whether "System" ever reaches this
+       webview as a live prefers-color-scheme signal or only as an already-resolved class (see
+       test/homey-css/widgets/README.md's "Dark mode" section) - either way, whenever Homey's own
+       resolved theme and the OS genuinely disagree, these four tokens can only ever follow the
+       OS, which is exactly what "OS only" exercises.
 
        Zone mix percentages are tuned per color, not shared: at equal alpha the four hues carry
        very different perceptual weight, and all four must stay light enough for the reading

@@ -30,11 +30,15 @@
        still added visible extra space beyond that native screen's own, so content shifted on the
        transition. Homey's own Style Library components carry their own internal spacing. */
     .content { flex: 1 1 auto; padding: 0; }
-    /* Homey's native `.homey-header` renders its own divider under the title/subtitle block on
-       a real device - not reproducible in test/homey-mock.css's approximation (see that file's
-       own caveat: it only has the Style Library's class *names* to go on, not its exact CSS), so
-       this was only ever visible on-device. Overridden off here per that on-device observation;
-       not independently re-confirmed in this repo's own tooling. */
+    /* Homey's native `.homey-header` renders its own divider under the title/subtitle block
+       (`_homey-typography.css`'s `border-bottom: 1px solid var(--homey-color-line)`) - first
+       observed on a real device, back when this repo's own tooling had no way to reproduce it
+       (an earlier, hand-approximated preview stylesheet only had the Style Library's class
+       *names* to go on, not its exact CSS). Overridden off here per that on-device observation.
+       Since confirmed independently: test/pair-login-preview.html now links Homey's own real,
+       fetched Style Library (test/homey-css/ - see CLAUDE.md's Pairing section), which loads the
+       real `_homey-typography.css` rule this override removes, so the divider - and the fact that
+       this override actually does something rather than being a no-op - reproduces there too. */
     .homey-header { border-bottom: none; box-shadow: none; text-align: center; }
     /* .homey-subtitle is documented as a single line of subtitle text, not multi-paragraph body
        copy, so the paragraph gap between the two <p> tags inside #instructionsText (see below)

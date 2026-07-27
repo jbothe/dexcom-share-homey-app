@@ -5,7 +5,12 @@
   <title>Glucose Dashboard widget preview</title>
   <style>
     /* Harness chrome only - never touches the widget itself, which renders inside the iframe
-       below exactly as shipped (widgets/glucose-dashboard/public/index.html, unmodified). */
+       below exactly as shipped (widgets/glucose-dashboard/public/index.html, unmodified). The
+       iframe is styled with Homey's own real widget Style Library, linked from
+       test/homey-css/widgets/ (see that folder's README.md) - the same approach
+       family.bothe.chargeiq's own test/widget-preview.html uses, replacing the earlier
+       test/homey-mock.css approximation entirely. The banner below reports any missing file
+       live, via the same CSS-completeness probe the pair preview uses. */
     :root {
       --bg: #f2f3f7;
       --surface: #ffffff;
@@ -32,12 +37,24 @@
     header { margin-bottom: 24px; }
     h1 { font-size: 18px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
     header p { font-size: 13px; line-height: 1.5; color: var(--text-muted); margin: 0; }
+    header code { background: var(--border); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
     section { margin-bottom: 28px; }
     section > h2 {
       font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--text-muted); margin: 0 0 10px;
     }
+
+    .banner {
+      border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.55; display: none;
+    }
+    .banner.visible { display: block; }
+    .banner.warn { background: #fff6e5; border: 1px solid #f5d69a; color: #6b4a06; }
+    .banner strong { display: block; margin-bottom: 4px; }
+    .banner ul { margin: 6px 0 0; padding-left: 20px; }
+    .banner li { margin-bottom: 2px; }
+    code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.92em; }
 
     .row { display: flex; gap: 8px; flex-wrap: wrap; }
 
@@ -69,14 +86,18 @@
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
       box-shadow: var(--shadow); padding: 24px;
     }
+    /* Harness chrome only - a plausible surface color behind the iframe's own transparent
+       background (public/index.html sets html/body background: transparent by design). Homey's
+       own app does have a Light/Dark/System theme choice, but it's unconfirmed whether "System"
+       ever reaches this webview as a live prefers-color-scheme signal or only as an already-
+       resolved class, same as an explicit Light/Dark pick (see the widgets README's "Dark mode"
+       section) - [data-theme] here only drives this cosmetic wrapper and the four bespoke
+       --spark-zone-* tokens inside the widget itself, never the widget's real Homey-provided
+       tokens (those come from the .homey-dark-mode class - see applyTheme below). */
     .frame-wrap { display: inline-block; border: 1px solid #ccc; background: #ffffff; border-radius: 10px; overflow: hidden; }
-    @media (prefers-color-scheme: dark) {
-      .frame-wrap { background: #0b0d12; border-color: #333; }
-    }
-    html[data-theme='light'] .frame-wrap { background: #ffffff; border-color: #ccc; }
     html[data-theme='dark'] .frame-wrap { background: #0b0d12; border-color: #333; }
     /* 176px matches widget.compose.json's actual on-dashboard height - see CLAUDE.md's Widget
-       section for how that number was measured. */
+       section for how that number was (re-)measured against the real, non-mock CSS in this tree. */
     iframe { display: block; width: 380px; height: 176px; border: 0; }
 
     textarea {
@@ -92,14 +113,16 @@
   <div class="page">
     <header>
       <h1>Glucose Dashboard widget preview</h1>
-      <p>Dev-only preview tool, not shipped with the app. Loads the real, unmodified widget file in an iframe.</p>
     </header>
+
+    <div class="banner" id="banner"></div>
 
     <div class="controls-card">
       <div class="row">
         <button class="theme-btn" data-theme="light">Light</button>
         <button class="theme-btn" data-theme="dark">Dark</button>
-        <button class="theme-btn" data-theme="">OS</button>
+        <button class="theme-btn" data-theme=""
+          title="Not a third Homey theme - clears the forced override so only the real OS/browser prefers-color-scheme drives the widget's own @media-only tokens, simulating Homey's resolved theme and the OS disagreeing.">OS only</button>
       </div>
       <div class="divider"></div>
       <div class="row">
@@ -201,13 +224,133 @@
     };
 
     var iframe = document.getElementById('widget');
-    var mockCssHref = 'homey-mock.css';
+    var bannerEl = document.getElementById('banner');
     var currentTheme = '';
     var currentChartMode = 'normal';
 
+    // homey.widgets.css is the manifest (@imports the seven files below, no rules of its own) -
+    // a separate Style Library from the pair one (test/homey-css/css/homey.css), with its own
+    // variable-naming scheme. See test/homey-css/widgets/README.md. _homey-variables.css also
+    // carries the real .homey-dark-mode override block (see applyTheme below) - no separate dark
+    // file exists or is needed.
+    var CSS_FILES = [
+      { path: 'homey-css/widgets/css/homey.widgets.css',    required: true,  note: 'manifest: @imports the seven files below' },
+      { path: 'homey-css/widgets/css/_homey-variables.css', required: true,  note: '--homey-* custom properties + .homey-dark-mode override - everything else depends on this' },
+      { path: 'homey-css/widgets/css/_homey-fonts.css',     required: true,  note: '@font-face declarations' },
+      { path: 'homey-css/widgets/css/_normalize.css',       required: true,  note: 'modern-normalize v3.0.0 (third-party reset)' },
+      { path: 'homey-css/widgets/css/_homey-base.css',      required: true,  note: 'html/body base, .homey-widget padding' },
+      { path: 'homey-css/widgets/css/_homey-text.css',      required: true,  note: '.homey-text-* (used throughout the widget)' },
+      { path: 'homey-css/widgets/css/_homey-icons.css',     required: false, note: '[class^=homey-custom-icon-] sizing - unused (inline SVG trend icons instead)' },
+      { path: 'homey-css/widgets/css/_homey-borders.css',   required: false, note: '.homey-border-* - unused by this widget' },
+      { path: 'homey-css/widgets/css/_homey-tables.css',    required: false, note: '.homey-table* - unused by this widget' },
+      { path: 'homey-css/widgets/fonts/Roboto-Regular.ttf', required: false, note: 'Roboto 400 - body text' },
+      { path: 'homey-css/widgets/fonts/Roboto-Medium.ttf',  required: false, note: 'Roboto 500 - .homey-text-medium, .window-pill' },
+      { path: 'homey-css/widgets/fonts/Roboto-Bold.ttf',    required: false, note: 'Roboto 700 - .homey-text-bold (name, badge)' },
+      { path: 'homey-css/widgets/fonts/Roboto-RegularItalic.ttf', required: false, note: 'unused by this widget (no italic text)' }
+    ];
+
+    function log(line) {
+      // No dedicated log panel on this harness (unlike the pair preview) - console is enough
+      // here since this page has no bridge traffic to narrate, just CSS load state.
+      // eslint-disable-next-line no-console
+      console.log('[widget-preview] ' + line);
+    }
+
+    function abs(path) { return new URL(path, window.location.href).href; }
+    function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    function exists(path) {
+      return fetch(abs(path), { method: 'GET', cache: 'no-store' })
+        .then(function (res) {
+          if (!res.ok) return 'missing';
+          if (/\.ttf$/i.test(path)) return 'ok';
+          return res.text().then(function (body) {
+            return /^\s*<(!doctype\s+html|html[\s>])/i.test(body) ? 'errorpage' : 'ok';
+          });
+        })
+        .catch(function () { return 'missing'; });
+    }
+
+    function probeCss() {
+      return Promise.all(CSS_FILES.map(function (f) {
+        return exists(f.path).then(function (status) {
+          return { file: f, ok: status === 'ok', status: status };
+        });
+      })).then(function (results) {
+        var missingRequired = results.filter(function (r) { return !r.ok && r.file.required; });
+        var missingOptional = results.filter(function (r) { return !r.ok && !r.file.required; });
+        var errorPages = results.filter(function (r) { return r.status === 'errorpage'; });
+
+        function list(rows) {
+          return '<ul>' + rows.map(function (r) {
+            return '<li><code>test/' + esc(r.file.path) + '</code> — ' + esc(r.file.note) + '</li>';
+          }).join('') + '</ul>';
+        }
+
+        if (errorPages.length) {
+          bannerEl.className = 'banner warn visible';
+          bannerEl.innerHTML = '<strong>Saved HTML error page, not a real asset.</strong>'
+            + 'Re-fetch with <code>test/homey-css/widgets/fetch.sh</code>.' + list(errorPages);
+        } else if (missingRequired.length) {
+          bannerEl.className = 'banner warn visible';
+          bannerEl.innerHTML = '<strong>Incomplete — colors/spacing will not render.</strong>'
+            + list(missingRequired.concat(missingOptional));
+        } else if (missingOptional.length) {
+          bannerEl.className = 'banner warn visible';
+          bannerEl.innerHTML = '<strong>Optional files missing.</strong>' + list(missingOptional);
+        }
+
+        log('CSS probe: ' + missingRequired.length + ' required, ' + missingOptional.length
+          + ' optional missing');
+      });
+    }
+
+    function ensureBaseCss(doc) {
+      if (!doc || doc.getElementById('homey-widgets-css')) return;
+      var link = doc.createElement('link');
+      link.id = 'homey-widgets-css';
+      link.rel = 'stylesheet';
+      link.href = abs('homey-css/widgets/css/homey.widgets.css'); // resolve against this page, not the iframe's own location
+      doc.head.appendChild(link);
+    }
+
+    // _homey-variables.css carries a `.homey-dark-mode { ... }` block redeclaring every
+    // mono/background/text-color/line/icon token used here, scoped to that class - the CSS file
+    // itself confirms this is class-based, not media-query-based (no @media block anywhere in
+    // it), whatever upstream signal (an explicit Light/Dark pick, or Homey's own System option -
+    // see the widgets README's "Dark mode" section) causes Homey to toggle it. The widget's own
+    // [data-theme] attribute is separate: it drives only the four bespoke --spark-zone-* tokens
+    // the widget's own file defines for itself (no Homey-provided equivalent exists for "shaded
+    // glucose zone" colors), and it's a dev-harness-only escape hatch - a real device never sets
+    // it, since those four tokens can only ever react to theme via a real
+    // prefers-color-scheme media query. Light/Dark below force both mechanisms together (a normal
+    // preview); "OS only" (theme === '') clears both, leaving .homey-dark-mode off (so the
+    // real Homey-provided tokens sit at their light default, same as a real device whenever
+    // Homey's own resolved theme is Light) while the four bespoke tokens follow whatever
+    // prefers-color-scheme this browser/OS actually reports - simulating Homey's theme and the
+    // OS disagreeing, not a fictional state (see the widgets README's "Dark mode" section for why
+    // that divergence is real, not just a testing artifact).
+    function applyTheme(theme) {
+      currentTheme = theme;
+      var doc = iframe.contentDocument;
+      if (theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+      if (doc && doc.documentElement) {
+        doc.documentElement.classList.toggle('homey-dark-mode', theme === 'dark');
+        if (theme) doc.documentElement.setAttribute('data-theme', theme);
+        else doc.documentElement.removeAttribute('data-theme');
+      }
+      document.querySelectorAll('.theme-btn').forEach(function (btn) {
+        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-theme') === theme));
+      });
+    }
+
     // Prototype-only: index.html's own setChartMode (see its GLUCOSE-LOGIC/sparkline comments)
-    // re-renders whatever payload is currently on screen, same as applyTheme's re-application
-    // of the current theme on iframe (re)load below.
+    // re-renders whatever payload is currently on screen, same as applyTheme's re-application of
+    // the current theme on iframe (re)load below.
     function applyChartMode(mode) {
       currentChartMode = mode;
       var win = iframe.contentWindow;
@@ -217,45 +360,25 @@
       });
     }
 
-    function injectMockCss() {
-      var doc = iframe.contentDocument;
-      if (!doc || doc.getElementById('homey-mock-css')) return;
-      var link = doc.createElement('link');
-      link.id = 'homey-mock-css';
-      link.rel = 'stylesheet';
-      link.href = new URL(mockCssHref, window.location.href).href;
-      doc.head.appendChild(link);
-    }
-
-    function applyTheme(theme) {
-      currentTheme = theme;
-      if (theme) document.documentElement.setAttribute('data-theme', theme);
-      else document.documentElement.removeAttribute('data-theme');
-      var doc = iframe.contentDocument;
-      if (doc) {
-        if (theme) doc.documentElement.setAttribute('data-theme', theme);
-        else doc.documentElement.removeAttribute('data-theme');
-      }
-      document.querySelectorAll('.theme-btn').forEach(function (btn) {
-        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-theme') === theme));
-      });
-    }
-
     iframe.addEventListener('load', function () {
-      injectMockCss();
-      applyTheme(currentTheme);
+      var doc = iframe.contentDocument;
+      ensureBaseCss(doc);
+      applyTheme(currentTheme); // re-apply after any (re)load, since a fresh document starts without the class/attribute
       applyChartMode(currentChartMode);
     });
 
     document.querySelectorAll('.theme-btn').forEach(function (btn) {
       btn.addEventListener('click', function () { applyTheme(btn.getAttribute('data-theme')); });
     });
-    applyTheme('');
 
     document.querySelectorAll('.chartmode-btn').forEach(function (btn) {
       btn.addEventListener('click', function () { applyChartMode(btn.getAttribute('data-chartmode')); });
     });
     applyChartMode(currentChartMode);
+
+    probeCss().then(function () {
+      applyTheme('');
+    });
 
     function applyState(state) {
       var win = iframe.contentWindow;
