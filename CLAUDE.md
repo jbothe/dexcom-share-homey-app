@@ -72,7 +72,7 @@ was masking it). It affects any TypeScript Homey app whose tsconfig extends a pa
 - `homey-app-validate.yml` — every `push`/`pull_request`, at **`level: verified`** (see Commands:
   stricter than `publish`, and the real gate). Deliberately not downgraded to `publish` to make it
   pass — `verified` is what the App Store requires anyway, so it is the honest gate. After `npm ci`
-  it also runs **`npm run lint` then `npm test`** (the 76 unit tests), ahead of the validate action,
+  it also runs **`npm run lint` then `npm test`** (104 unit tests), ahead of the validate action,
   so a lib/ logic or style regression is enforced in CI and surfaces before a manifest one — the
   manifest validation alone would not have caught either.
 - `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, cuts a GitHub
@@ -94,8 +94,37 @@ loop that aggregates every device's already-polled state.
   device unavailable — deliberately *not* retried quickly, to avoid compounding a real Dexcom account
   lockout. One persistent client is reused across polls, rebuilt only when username/password/region
   actually change (a fingerprint check), not on unrelated threshold-only settings saves.
-- Each successful tick makes **one** `getGlucoseReadings(180, 36)` call, serving both the latest-value
-  capabilities and the widget's 3h history — no separate rolling buffer.
+- **The normal cadence is anchored to the *reading's own* timestamp, not to when the last poll
+  happened** (`computeNextPollDelayMs`, exported for direct unit testing). Scheduling a flat 5 min
+  after each poll compounds any lag between Dexcom's sample clock and ours forever: if the first
+  reading fetched is already two minutes stale, every later poll lands two minutes late. Targeting
+  `lastKnownReadingTimeMs + 5min` re-aligns on every tick, clamped to a 30s floor and the 5 min
+  ceiling. A poll that *succeeds* but yields no genuinely new reading has no fresh timestamp to
+  anchor to, so `MISSED_READING_BACKOFF_MS` (30s → 60s → 300s, indexed by consecutive-miss count)
+  retries quickly at first and then settles, rather than hammering a stalled account every 30s
+  forever.
+- Each successful tick makes **one** `getGlucoseReadings(1440, 288)` call — Dexcom Share's own
+  ceiling — serving both the latest-value capabilities and the widget's history (whose display
+  window is tap-to-cycle across 3h/6h/12h/24h, see the Widget section), with no separate rolling
+  buffer.
+- **The client build happens *inside* `tick()`'s own try/catch, and `start()` deliberately does not
+  build one of its own.** Both were once outside it, so a `clientFactory` failure — most plausibly
+  `client.ts`'s dynamic ESM `import()` failing on a real Homey, which is still unverified there
+  (see "Not yet verified") — rejected before reaching `applyNoDataAlarm()` or `scheduleNextTick()`:
+  **the self-rearming loop never rearmed**, leaving the device with no timer at all and so no retry
+  until the app restarted or settings were saved. It also wrote no capabilities whatsoever, not even
+  `alarm_no_data`, so the tile showed nothing rather than "No Data" — and on the timer path the
+  default `setTimer` wrapper's own `.catch(() => {})` swallowed the error entirely. A build failure
+  is now just another tick failure: it backs off through the transient tiers and retries. Confirmed
+  dead-on-arrival before the fix (zero timers scheduled) and regression-tested in
+  `test/dexcom-poller.test.ts`.
+- **`refreshConfig()` commits the credentials fingerprint only *after* the build resolves**, and
+  drops the superseded client before attempting a new one. Recording it up front (as it once did)
+  meant a failed build left the poller claiming to be current while still holding the *previous*
+  account's client — so every later `refreshConfig()` saw a matching fingerprint plus a live client,
+  skipped the rebuild, and went on polling the old account indefinitely while the device's own
+  settings showed the new one. Leaving `client` null on failure is what lets the next tick retry the
+  build at all. Regression-tested in `test/dexcom-poller.test.ts`.
 - **`glucose_data_age`** (minutes since the last reading) is deliberately *not* written from
   `DexcomPoller` alongside the other capabilities. A tick-only update would only refresh every 5
   minutes and drift stale in between (unlike the widget's own "Xm ago" text, which re-renders from
@@ -106,7 +135,16 @@ loop that aggregates every device's already-polled state.
   formula as the widget's `fmtAgo`, and pushes it through `device.ts`'s `setDataAgeMinutes()`. So
   the capability updates on the same cadence as the dashboard and always agrees with what it shows,
   without teaching the poller itself about wall-clock-driven (as opposed to tick-driven) capability
-  writes.
+  writes. **A null result (no reading has ever arrived) is deliberately left unwritten**, not
+  coerced to a number: Homey's own unset value for a numeric capability is already null, which the
+  tile renders as unknown — the honest display for "there is no reading to measure the age of".
+  Writing `0` to make the capability always-present, by analogy with the
+  `initializeAlarmCapabilities()` force-write below, would be a real bug: `0` reads as "0 minutes
+  old", i.e. perfectly fresh, exactly backwards on a device that has never reported. The alarms
+  differ only because `false` genuinely *is* their "nothing wrong" value; this capability has none,
+  the same reason `measure_glucose`/`glucose_trend` stay unwritten on an empty poll. `updatedAt`
+  never returns to null once set, so this only ever applies before the first reading, never as a
+  regression on a device that was previously reporting.
 - **Severity is a derived band** (`lib/dexcom/glucoseAlarms.ts`'s `classifyGlucose`), not three
   independent threshold checks: `alarm_urgent_low`/`alarm_low`/`alarm_high` are mutually exclusive.
   `alarm_rapid_change` is independent (true on `DoubleUp`/`DoubleDown` trend). Capability writes and

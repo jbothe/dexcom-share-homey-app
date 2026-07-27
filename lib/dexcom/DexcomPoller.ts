@@ -60,8 +60,8 @@ const MIN_POLL_DELAY_MS = 30_000;
  */
 const MISSED_READING_BACKOFF_MS = [MIN_POLL_DELAY_MS, 60_000, NORMAL_INTERVAL_MS];
 // Dexcom Share's own ceiling (dexcom-share-client's MAX_MINUTES/MAX_MAX_COUNT) - pulling the full
-// 24h lets the widget's history payload carry more than its own current fixed 3h display window
-// needs, so a future per-widget time-range setting can zoom out without any poller/payload change.
+// 24h is what lets the widget's own tap-to-cycle display window zoom out to 6h/12h/24h purely
+// client-side (see its WINDOW_OPTIONS_MS), with no poller or payload change per window.
 const HISTORY_MINUTES = 1440;
 const HISTORY_MAX_COUNT = 288;
 

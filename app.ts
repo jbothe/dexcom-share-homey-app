@@ -111,9 +111,9 @@ module.exports = class DexcomFollowApp extends Homey.App {
     const devices = this.getFollowerDevices();
     const match = devices.find((d) => d.getData().id === deviceId);
     if (!match) {
-      // Only the no-match case is worth a log line on an ongoing (~every 30s) poll - e.g. the
-      // widget's bound follower was since removed. A successful match every 30s forever would
-      // just be noise once device-binding itself is no longer in question.
+      // Only the no-match case is worth a log line on an ongoing (~every 60s, the widget's own
+      // POLL_MS) poll - e.g. the widget's bound follower was since removed. A successful match
+      // every 60s forever would just be noise once device-binding itself is no longer in question.
       this.log('[widget-api] getState: no device found for', deviceId);
     }
     return match ? this.buildWidgetPayload(match) : null;

@@ -136,6 +136,18 @@ module.exports = class FollowerDevice extends Homey.Device {
    * dashboard shows at that same moment, not just at the (much less frequent) 5-minute poll
    * cadence - a tick-only update would drift stale between polls exactly like measure_glucose
    * would if it only updated once every 5 minutes.
+   *
+   * A null `minutes` (minutesSinceReading's answer while no reading has ever arrived) is
+   * deliberately left unwritten rather than coerced to a number. Homey's own unset value for a
+   * numeric capability is already null, which the tile renders as unknown - the honest display
+   * for "there is no reading to measure the age of". Do NOT be tempted to write 0 here to make
+   * the capability always-present, the way initializeAlarmCapabilities() force-writes the alarms
+   * (see DexcomPoller): 0 reads as "the data is 0 minutes old", i.e. perfectly fresh, which is
+   * the exact opposite of the truth on a device that has never reported. The alarms differ
+   * because false genuinely is their "nothing wrong" value; this capability has no such value,
+   * which is the same reason measure_glucose/glucose_trend are left unwritten on an empty poll.
+   * `updatedAt` never returns to null once set, so this only ever applies before the first
+   * reading - never as a regression from a device that was previously reporting.
    */
   setDataAgeMinutes(minutes: number | null): void {
     if (minutes !== null && this.hasCapability('glucose_data_age')) {
