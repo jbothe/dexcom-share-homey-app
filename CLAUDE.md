@@ -332,13 +332,95 @@ Library doesn't document — is still hand-rolled CSS, and it's deliberately lay
 colors, borders, or fonts guessed there anymore. It still echoes the placement (though not the
 actual chrome) of Homey's own default pairing "Next" button.
 
-**`.homey-header { border-bottom: none; box-shadow: none; }` overrides a divider Homey's real,
-native Style Library renders under the title/subtitle block on-device** — per an on-device
-observation, not something reproducible or independently re-confirmed in this repo's own tooling
-(`test/homey-mock.css`'s approximation never had one, since Homey's docs only publish the Style
-Library's class *names*, not its exact CSS — see that file's own caveat). If a future firmware
-changes or removes that native divider, this override just becomes a no-op, not a visible bug —
-low risk either way.
+**Preview harness: `test/pair-login-preview.html`** (dev-only, not shipped, must be served over
+http(s) — same constraint and convention as the widget's own `test/widget-preview.html`). Fetches
+the real, unmodified `pair/login.html`, stubs `window.Homey` (`__`/`emit`/`showView`/`alert`, with
+`__` backed by the app's own live `locales/en.json` so preview copy can't drift), and renders it
+inside a reproduction of Homey's actual pairing wizard chrome. Styling is Athom's own, committed
+verbatim under `test/homey-css/` (25 files, ~500KB, original names and layout so the relative
+`@import`/`url()` paths resolve and the copies stay byte-comparable against a live Homey).
+`test/homey-css/fetch.sh` re-downloads them in place, so `./fetch.sh && git diff` shows whether a
+firmware update changed the pair screen. The harness probes every file on load and names any that
+are missing rather than silently rendering unstyled. Details in that folder's own README.
+
+**No mock fallback here.** `test/homey-mock.css` is wrong in ways that mislead silently — see the
+`--homey-su` bullet below, plus its invented `.homey-text-*` classes and `[data-theme]` dark
+mechanism. It survives only because `test/widget-preview.html` still loads it; delete it once the
+widget harness moves to real CSS.
+- `css/homey.css` is an **import manifest only** — `@import`s of `_homey-variables.css` /
+  `_base.css` / `_homey-typography.css` / `_homey-button.css` / `_homey-form.css` /
+  `_homey-icon.css` plus the three `font/*` sheets. Those partials carry the Style Library; the
+  manifest alone renders nothing. There is no `homey-drivers.css` or `homey-app.css` on the server.
+- `homey.drivers.css` (dots, not dashes — unrelated to `homey.css`) is the pairing wizard chrome:
+  `body#hy-wrap` (flex column) > `#hy-header` + `#hy-views` > `.hy-view.visible`, where `.hy-view`
+  is `position: absolute; overflow: auto; padding: 0 var(--homey-su-2) var(--homey-su-2)`. That
+  outer padding and definite height are what the view's own `.page { min-height: 100% }` /
+  `.footer { margin-top: auto }` pinning resolve against, so previewing `login.html` as a
+  standalone document gets its spacing wrong. `#hy-nav` renders without `.visible`
+  (`display: none`) — the "only one Continue button" state this step's absent `"navigation"`
+  produces on-device.
+- **The structure is nested: the wizard is its own document, each pair view a fragment inside it.**
+  `_base.css` sets `html { height: 100% }` and `html > body { padding: var(--homey-su-2)
+  !important }` and `homey.drivers.css` matches `html > body#hy-wrap` — a bundle owning `html` and
+  `body` outright cannot be layered onto the main Homey UI shell, where `--homey-color-white` is in
+  fact undefined. Within the wizard document each step is a `.hy-view` div holding the view as a
+  fragment, which is why `login.html` gets a *synchronous* global `Homey` and the Style Library
+  with neither a `<script src="/homey.js">` nor a `<link>` of its own. The harness's iframe *is*
+  that wizard document, and emits the view's `<style>` after the Homey sheets so overrides like
+  `.homey-header { border-bottom: none }` cascade as they do on-device.
+- Fonts are `.ttf`, not woff2. `roboto.css` declares eight faces; three are reachable here — 700
+  (`.homey-title`), 500 (`[class*='homey-button']`), 400 (subtitle/labels/inputs) — so those are
+  what the harness probes by name. A missing weight is synthesised from Regular with the wrong
+  metrics.
+- **Two non-font assets are reachable**, in `icons/` and `img/` (siblings of `css/`, referenced as
+  `../icons/` / `../img/`): `chevron-down-regular.svg`, the Region `<select>`'s chevron —
+  `select.homey-form-select` sets `appearance: none` and reserves
+  `padding-inline-end: var(--homey-su-6)` for it, so without the file the select reads as a plain
+  text box — and `spinner.svg`, the Continue button's `.is-loading` spinner. The rest
+  (`checkmark*.svg`, `arrow-{left,right}.svg`, `search*.png`, `throbber-*.svg`) belong to
+  checkboxes, radios, wizard nav and `#hy-overlay-loading`, none of which this view renders.
+- `Homey.alert()`'s real modal is in none of these sheets (`homey.drivers.css` only styles
+  `#hy-overlay-loading`), so the harness shows a clearly-labelled approximation.
+
+**Dark mode on a pair view is a wholesale CSS inversion, not a re-theme.** On a real Homey in dark
+mode, inside the wizard's frame, the screen renders dark while `--homey-color-white` still computes
+to `#fff`. The `--homey-*` tokens are not themed and the Style Library has no dark values at all —
+no `prefers-color-scheme`, no `[data-theme]`, no `@media` block in any partial — which is why
+switching theme downloads nothing new. What Homey applies is the filter its own web app defines,
+`:root,.lightTheme { --theme-filter-dark-mode: none }` /
+`.darkTheme { --theme-filter-dark-mode: invert(1) hue-rotate(180deg) }`: `invert` flips lightness,
+the `hue-rotate` restores hues so blues stay blue. It is also the only mechanism available, since
+the wizard (`<id>.connect.athom.com`) and the shell (`my.homey.app`) are different origins — a
+filter on the frame needs no DOM access, a re-theme would. The harness reproduces it with
+`html { filter: invert(1) hue-rotate(180deg) }` on Theme=Dark.
+- **Consequence for `login.html`:** everything inverts and no token can opt out, so an image added
+  to that screen renders negated (there are none today — the reason to keep it so). Conversely a
+  hardcoded colour is not the silent light-only bug it would be under a themed system, since it
+  inverts too. `login.html`'s comment claiming the Style Library gives it "dark mode … from Homey's
+  own real in-app theme" is wrong on the dark half: dark comes from the inversion.
+- **`--homey-su` is 8px, so every `--homey-su-*` in `homey-mock.css` is half the real value** (mock
+  `--homey-su: 4px`), and the real scale stops at `-6` where the mock invented `-7`/`-8`.
+  `.hy-view`'s padding is `0 16px 16px`, not the mock's `0 8px 8px`. Likewise
+  `--homey-font-size-large` is 24px not 20px (20px is the real `-medium`, which the mock lacks,
+  alongside a real `-xlarge: 32px`), and the radius token is `--homey-border-radius: 10px` /
+  `-small: 5px`, not the mock's invented `--homey-border-radius-default: 8px` / `-small: 4px`.
+  **Treat any spacing or sizing judgement the mock informed as unreliable** — including the
+  widget's measured `height: 176`, taken by injecting `homey-mock.css` and so resting on half-size
+  spacing tokens (see Widget).
+- `.homey-header` really does carry `border-bottom: 1px solid var(--homey-color-line)`, so
+  `login.html`'s override removes something that exists. It also has `-16px` left/right margins
+  with matching padding, deliberately bleeding to the edges of `.hy-view`'s own padding.
+- Homey's disabled-button rule is `[class*='homey-button'][disabled='disabled']`, an exact
+  attribute-*value* match, while `login.html` disables via `button.disabled = true`, which reflects
+  as `disabled=""` — so `grayscale(1) opacity(0.5)` never applies. It doesn't matter: the same code
+  path adds `.is-loading`, which Homey styles independently (`opacity: .75` + spinner) and which
+  suits a busy button better than a disabled one. `.is-disabled` exists if the grey look is wanted.
+
+**`.homey-header { border-bottom: none; box-shadow: none; }` overrides a real divider.**
+`_homey-typography.css` gives `.homey-header` a `border-bottom: 1px solid
+var(--homey-color-line)`, so this removes something that exists rather than being a no-op — and it
+now reproduces in the harness. If a future firmware drops that divider the override becomes
+harmless.
 
 ## Widget (`widgets/glucose-dashboard/`)
 **One widget instance = one follower device, picked via the widget's own `"device"` autocomplete
