@@ -6,7 +6,7 @@ import { DexcomPollerHost, Units, WidgetSnapshot } from '../../lib/dexcom/types'
 import {
   toDisplay, toMgdl, unitDecimals, unitLabel,
 } from '../../lib/dexcom/units';
-import { resolveThresholdsOnSave } from '../../lib/dexcom/thresholds';
+import { resolveThresholdsOnSave, thresholdsFromSettings } from '../../lib/dexcom/thresholds';
 import { createDexcomClient } from '../../lib/dexcom/client';
 
 interface DexcomFollowApp extends Homey.App {
@@ -113,6 +113,16 @@ module.exports = class FollowerDevice extends Homey.Device {
   }
 
   /**
+   * Stop polling when this device is torn down but not deleted - an app update/restart or the
+   * device being disabled. Mostly belt-and-braces, since the app process usually dies with it,
+   * but onDeleted alone leaves the self-rearming timer running in every path that isn't an
+   * outright removal.
+   */
+  async onUninit() {
+    this.poller?.stop();
+  }
+
+  /**
    * Read model for app.ts's widget broadcast - both units included, unit-agnostic, plus all
    * three thresholds (converted to canonical mg/dL, same as the rest of the snapshot) so the
    * widget can shade its chart's severity zones without a separate settings lookup.
@@ -120,12 +130,14 @@ module.exports = class FollowerDevice extends Homey.Device {
   getWidgetSnapshot(): WidgetSnapshot | null {
     const snapshot = this.poller?.getSnapshot();
     if (!snapshot) return null;
-    const units = this.getUnits();
     return {
       ...snapshot,
-      urgentLowMgDl: toMgdl(this.getSetting('urgentLowThreshold') as number, units),
-      lowMgDl: toMgdl(this.getSetting('lowThreshold') as number, units),
-      highMgDl: toMgdl(this.getSetting('highThreshold') as number, units),
+      // Same shared resolver the poller's own severity classification uses, so the widget's
+      // shaded zones can't drift from the alarm bands they're meant to depict - and so a missing
+      // setting falls back to the documented default instead of converting undefined into a NaN
+      // bound, which reaches the widget as a zone rect with NaN geometry and silently fails to
+      // draw rather than erroring anywhere.
+      ...thresholdsFromSettings((key) => this.getSetting(key), this.getUnits()),
     };
   }
 

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import {
-  resolveThresholdsOnSave, THRESHOLD_ORDER_MESSAGE,
+  resolveThresholdsOnSave, thresholdsFromSettings, DEFAULT_THRESHOLDS_MGDL, THRESHOLD_ORDER_MESSAGE,
 } from '../lib/dexcom/thresholds';
 
 /** Defaults as driver.settings.compose.json ships them, in mg/dL. */
@@ -126,4 +126,51 @@ test('a units change that would put converted thresholds out of order is still r
     changedKeys: ['units', 'lowThreshold'],
   });
   assert.deepEqual(result, { error: THRESHOLD_ORDER_MESSAGE });
+});
+
+/**
+ * The shared resolver behind both DexcomPoller's severity classification and device.ts's widget
+ * snapshot, which each carried their own copy of this conversion before - one of them (the widget
+ * snapshot) with no fallback at all, so an absent setting reached the widget as a NaN bound.
+ */
+const STORED_MGDL: Record<string, unknown> = {
+  urgentLowThreshold: 55, lowThreshold: 70, highThreshold: 180,
+};
+
+test('thresholdsFromSettings: mg/dL settings pass through as canonical mg/dL', () => {
+  assert.deepEqual(
+    thresholdsFromSettings((key) => STORED_MGDL[key], 'mgdl'),
+    { urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180 },
+  );
+});
+
+test('thresholdsFromSettings: mmol/L settings are converted, never compared raw', () => {
+  const stored: Record<string, unknown> = {
+    urgentLowThreshold: 3.1, lowThreshold: 3.9, highThreshold: 10,
+  };
+  assert.deepEqual(
+    thresholdsFromSettings((key) => stored[key], 'mmol'),
+    { urgentLowMgDl: 56, lowMgDl: 70, highMgDl: 180 },
+  );
+});
+
+test('thresholdsFromSettings: an absent setting falls back to the default rather than becoming NaN', () => {
+  const resolved = thresholdsFromSettings(() => undefined, 'mmol');
+  assert.deepEqual(resolved, DEFAULT_THRESHOLDS_MGDL);
+  assert.ok(Object.values(resolved).every(Number.isFinite), 'no bound is NaN');
+});
+
+test('thresholdsFromSettings: a null or non-numeric setting also falls back, per bound', () => {
+  const stored: Record<string, unknown> = {
+    urgentLowThreshold: null, lowThreshold: 'oops', highThreshold: 200,
+  };
+  assert.deepEqual(thresholdsFromSettings((key) => stored[key], 'mgdl'), {
+    urgentLowMgDl: DEFAULT_THRESHOLDS_MGDL.urgentLowMgDl,
+    lowMgDl: DEFAULT_THRESHOLDS_MGDL.lowMgDl,
+    highMgDl: 200,
+  });
+});
+
+test('DEFAULT_THRESHOLDS_MGDL matches the values driver.settings.compose.json ships', () => {
+  assert.deepEqual(DEFAULT_THRESHOLDS_MGDL, { urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180 });
 });

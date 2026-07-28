@@ -251,6 +251,40 @@ test('AccountError triggers a long backoff and marks the device unavailable', as
   assert.equal(client.calls, 2, 'retried once the full 15 minute backoff elapsed');
 });
 
+test('an AccountError ends the transient-failure streak rather than carrying its tier across', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost();
+  // Two transient failures climb to the last tier, then an account error interrupts, then a
+  // transient failure again. That last one must restart the tiers at 60s, not resume at 300s:
+  // the tiers count *consecutive transient* failures, and an account error is not one of those.
+  const failures = [serverError(), serverError(), accountError(), serverError()];
+  let index = 0;
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => new FakeClient(async () => {
+      const failure = failures[Math.min(index, failures.length - 1)];
+      index += 1;
+      throw failure;
+    }),
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  await poller.start(); // transient #1 -> 60s
+  await clock.advance(60_000); // transient #2 -> 120s
+  await clock.advance(120_000); // account error -> 15 min
+  assert.equal(index, 3);
+  assert.equal(host.available, false);
+
+  await clock.advance(15 * 60_000); // transient again, after the account backoff
+  assert.equal(index, 4);
+
+  // The streak restarted, so this retry lands at 60s rather than the 300s top tier.
+  await clock.advance(60_000);
+  assert.equal(index, 5, 'retried at the first tier again, not the tier the streak had reached');
+});
+
 test('capability writes only happen on a severity crossing edge, not every tick', async () => {
   const clock = new FakeClock();
   const host = new FakeHost({

@@ -260,6 +260,19 @@ skip this conversion and compare the raw stored number directly against a canoni
 a real bug, silently misclassifying severity whenever mmol/L was the active unit; fixed alongside
 this move, regression-tested in `test/dexcom-poller.test.ts`.)
 
+**That settings-to-canonical-mg/dL read is one shared function, `thresholds.ts`'s
+`thresholdsFromSettings(read, units)`**, used by both `DexcomPoller.thresholds()` (severity
+classification) and `device.ts`'s `getWidgetSnapshot()` (the widget's shaded zones), with
+`DEFAULT_THRESHOLDS_MGDL` as the single copy of the 55/70/180 fallbacks that `pairing.ts` also
+offers new devices. All three previously carried their own copy of those numbers — and
+`getWidgetSnapshot()` carried *no* fallback at all, so an absent setting became
+`toMgdl(undefined)` → `NaN`, which fails silently in both directions it can travel: a NaN bound
+classifies every reading as `normal`, and it reaches the widget as a zone rect with NaN geometry
+that simply doesn't draw. Only reachable if a threshold setting were genuinely missing (the
+compose schema supplies defaults, so this was defensive), but the duplication was the real
+hazard — the two paths could disagree about the same device's bands. A non-finite or non-numeric
+stored value now falls back per-bound rather than propagating.
+
 **`measure_glucose` is stored in the device's *display* unit, not canonical mg/dL** — the poller
 writes `toDisplay(mgDl, units)` (`DexcomPoller.ts`), and `device.ts`'s `refreshCapabilityOptions()`
 fixes the tile's own unit label + decimals per-device via `setCapabilityOptions`

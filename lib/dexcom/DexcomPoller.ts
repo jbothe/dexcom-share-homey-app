@@ -6,7 +6,8 @@ import {
 import {
   classifyGlucose, isRapidChange, isStale, rapidChangeDirection, severityToAlarms,
 } from './glucoseAlarms';
-import { toDisplay, toMgdl } from './units';
+import { toDisplay } from './units';
+import { thresholdsFromSettings } from './thresholds';
 import parseCorrectedEpoch from './timestamp';
 
 /** Minimal shape of a dexcom-share-client GlucoseReading this module actually needs. */
@@ -224,6 +225,12 @@ export class DexcomPoller {
   async requestImmediateRefresh(): Promise<void> {
     const nowMs = this.now();
     if (this.lastTickAt !== null && nowMs - this.lastTickAt < MIN_REFRESH_GAP_MS) {
+      // Deliberately resolves rather than throwing: the "Refresh glucose now" Flow action would
+      // otherwise mark the whole Flow as failed over a benign rate limit. Logged so that a user
+      // wondering why their manual refresh appeared to do nothing can see that it was skipped,
+      // and why - without it this is entirely silent from both the Flow and the log.
+      const agoSec = Math.round((nowMs - this.lastTickAt) / 1000);
+      this.host.log(`[manual] refresh skipped, last poll was ${agoSec}s ago (min gap ${MIN_REFRESH_GAP_MS / 1000}s)`);
       return;
     }
     if (this.timerHandle !== null) {
@@ -233,24 +240,12 @@ export class DexcomPoller {
     await this.tick('manual');
   }
 
-  /**
-   * Threshold settings are stored in whatever unit is currently active (mg/dL or mmol/L - see
-   * CLAUDE.md's Units section), never canonical mg/dL by themselves. Each must be converted via
-   * the device's own current unit before comparison against a reading's canonical mg/dL value -
-   * skipping this silently misclassifies severity whenever mmol/L is the active unit (e.g. a
-   * stored "3.9" read as if it meant 3.9 mg/dL instead of the ~70 mg/dL it actually represents).
-   */
+  /** See thresholdsFromSettings for why the stored numbers can't be compared raw. */
   private thresholds(): AlarmThresholds {
-    const units = this.host.getUnits();
-    const mgDl = (key: string, fallbackMgDl: number): number => {
-      const value = this.host.getSetting<number>(key);
-      return value === undefined ? fallbackMgDl : toMgdl(value, units);
-    };
-    return {
-      urgentLowMgDl: mgDl('urgentLowThreshold', 55),
-      lowMgDl: mgDl('lowThreshold', 70),
-      highMgDl: mgDl('highThreshold', 180),
-    };
+    return thresholdsFromSettings(
+      (key) => this.host.getSetting<number>(key),
+      this.host.getUnits(),
+    );
   }
 
   private noDataTimeoutMin(): number {
@@ -302,6 +297,12 @@ export class DexcomPoller {
       const message = 'Check Dexcom Share credentials in device settings';
       this.host.setUnavailable(message);
       this.host.setWarning(message);
+      // Ends the consecutive-transient-failure streak: the tiers below mean "how many transient
+      // failures in a row", and an account error is a different failure class handled by its own
+      // much longer backoff. Left un-reset, an account error in the middle of a transient streak
+      // preserved the tier count across it, so the next transient failure resumed at 300s rather
+      // than starting over at 60s.
+      this.transientFailureCount = 0;
       return ACCOUNT_ERROR_BACKOFF_MS;
     }
     this.host.error(`[${trigger}] Dexcom poll failed`, error);
