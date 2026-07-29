@@ -719,8 +719,14 @@
     // the bound device setting resolved to anything, and whether the realtime push and/or the
     // Homey.api() poll are actually firing - same pattern as pair/login.html's own diag().
     function diag(msg, extra) {
+      // `extra` is omitted entirely when there isn't one, rather than passed as a placeholder:
+      // console.log(line, undefined) prints a literal "undefined", but the '' used instead is no
+      // quieter - Safari's console renders an empty-string argument as a visible – "" after the
+      // message (noticed reading this widget's log over remote Web Inspector, where the
+      // argument-less lines looked like they had lost their payload).
+      var line = '[dexcom-widget] ' + msg;
       // eslint-disable-next-line no-console
-      console.log('[dexcom-widget] ' + msg, extra !== undefined ? extra : '');
+      console.log.apply(console, extra === undefined ? [line] : [line, extra]);
     }
 
     var CHECK_MS = 5000;
