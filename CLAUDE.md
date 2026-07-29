@@ -509,6 +509,26 @@ same problem the same way:
 the widget to a dashboard no longer shows a device-picker step at add-time — the user picks their
 follower afterward, in the widget's own settings (its edit/gear icon on the dashboard).
 
+**`onHomeyReady` is written to be correct whether or not Homey re-invokes it in the same JS
+context** (on a dashboard remount or a settings save) — which is genuinely unconfirmed, so rather
+than guessing, everything except the realtime subscription is re-run on every call. The old
+structure read the settings and issued its first poll inside a run-once guard, which is only safe
+if Homey always reloads the page instead. If it does *not*, that guard produced four distinct
+bugs, all confirmed by driving the real `onHomeyReady` through a stubbed `Homey`/DOM under repeat
+invocation: a `chartScale` change was ignored; the card was blanked by `render(null)` while the
+guarded `pollState()` skipped the repaint that would have refilled it, leaving it empty for up to
+`POLL_MS`; a rebind to a different follower was ignored entirely; and — worst for a CGM app — the
+realtime handler kept accepting pushes for the **previously** bound follower, so the widget went
+on showing another person's readings. Only the `Homey.on('glucose', ...)` subscription is still
+once-only (the widget `Homey` exposes no `off()`, so re-subscribing stacks duplicate handlers —
+the incident `widgets/power-flow` documents); `boundDeviceId` is read *inside* that handler rather
+than captured, so the single subscription survives a rebind. `pollTimer` is cleared and re-armed
+each call, mirroring `staleTimer`'s own existing pattern, so a re-invocation can't stack
+intervals. Re-running all of this costs nothing on the single-invocation path, so the
+open question stops affecting correctness either way — it is no longer worth chasing for this
+reason alone (`test/widget-preview.html` still can't exercise any of it, since it calls
+`render()` directly and never runs `onHomeyReady`).
+
 Otherwise follows chargeiq's `power-flow` widget pattern: self-contained `public/index.html`
 (inline CSS+JS, no imports), styled purely via Homey's injected `--homey-*` vars/`.homey-text-*`
 classes (no local color fallback, no manual dark-mode detection), and a staleness watchdog (`.stale`
@@ -894,7 +914,11 @@ above) — untested by design, same as the rest of the thin Homey adapters (see 
 unconfirmed: the tap-to-cycle window control's `HomeyRef.hapticFeedback()` call (see the Widget
 section) — the preview harness has no `HomeyRef` at all (see its own doc comment), so the tap
 cycling/thinning/pill logic was verified there, but the haptic itself has never fired outside a real
-Homey widget context. **Also unconfirmed: exactly how Homey's own Light/Dark/System app theme
+Homey widget context. **Whether Homey re-invokes `onHomeyReady` in the same JS context** (rather
+than reloading the page) on a dashboard remount or a settings save is likewise still unconfirmed —
+but that one no longer has consequences: `onHomeyReady` was restructured to behave correctly under
+either answer, so it is documented in the Widget section as a resolved-by-construction question
+rather than a pending one. **Also unconfirmed: exactly how Homey's own Light/Dark/System app theme
 setting (Settings > Appearance) surfaces into a widget's webview.** The widget's real
 `_homey-variables.css` (`test/homey-css/widgets/`) is purely class-based (`.homey-dark-mode`, no
 `@media` block at all), so whatever Homey injects for its own semantic `--homey-*` tokens is

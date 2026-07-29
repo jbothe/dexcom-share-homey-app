@@ -760,51 +760,82 @@
         });
     }
 
-    // Guarded against Homey re-invoking onHomeyReady on every dashboard remount, same
-    // duplicate-listener fix as widgets/power-flow (see its own comment for the incident
-    // this prevents).
-    var readyListenerAttached = false;
+    // The realtime subscription is the one thing here that must happen exactly once: the widget
+    // Homey object exposes no off(), so re-subscribing would stack duplicate handlers (same
+    // incident as widgets/power-flow, see its own comment). Everything ELSE in onHomeyReady is
+    // deliberately re-run on every invocation - see its own comment.
+    var realtimeSubscribed = false;
     var staleTimer = null;
 
+    /**
+     * Written to be correct whether or not Homey re-invokes this in the same JS context on a
+     * dashboard remount or a settings save - which is genuinely unconfirmed (see CLAUDE.md's
+     * "Not yet verified"), and which the old structure had to guess at. It read the settings and
+     * issued its first poll inside a run-once guard, so IF Homey does re-invoke it here, this
+     * widget would pin itself to whichever device and chart scale it saw at first load and
+     * silently ignore every later settings edit, while render(null) blanked a card that already
+     * had data and the guarded pollState() skipped the repaint that would have refilled it -
+     * leaving it empty for up to POLL_MS. Re-reading settings and re-arming timers on each call
+     * costs nothing on the single-invocation path and is correct on both, so the answer stops
+     * mattering.
+     */
     function onHomeyReady(Homey) {
       HomeyRef = Homey;
       Homey.ready();
-      render(null);
-      if (!readyListenerAttached) {
-        readyListenerAttached = true;
-        // This widget instance is bound to exactly one follower via its own "device"
-        // autocomplete setting (widget.compose.json + app.ts's
-        // registerWidgetDevicePicker) - not Homey's native "devices" widget setting, which
-        // handed back an id this app had no documented way to resolve to one of its own
-        // devices (see CLAUDE.md's Widget section). The settings value is populated with this
-        // app's own data.id, so it needs no separate translation step here.
-        var deviceSetting = Homey.getSettings().device;
-        diag('Homey.getSettings().device', deviceSetting);
-        boundDeviceId = (deviceSetting && deviceSetting.id) || null;
 
-        // This widget instance's own y-axis preference (widget.compose.json's own "chartScale"
-        // dropdown setting, see GD.sparkline's opts.chartMode) - read once alongside the device
-        // binding above, same cadence/guard.
-        var chartScaleSetting = Homey.getSettings().chartScale;
-        diag('Homey.getSettings().chartScale', chartScaleSetting);
-        chartMode = chartScaleSetting || 'normal';
+      // This widget instance is bound to exactly one follower via its own "device" autocomplete
+      // setting (widget.compose.json + app.ts's registerWidgetDevicePicker) - not Homey's native
+      // "devices" widget setting, which handed back an id this app had no documented way to
+      // resolve to one of its own devices (see CLAUDE.md's Widget section). The settings value is
+      // populated with this app's own data.id, so it needs no separate translation step here.
+      var deviceSetting = Homey.getSettings().device;
+      diag('Homey.getSettings().device', deviceSetting);
+      boundDeviceId = (deviceSetting && deviceSetting.id) || null;
 
-        if (boundDeviceId) {
-          // One shared channel for every follower (see broadcastDeviceState's own comment on
-          // why a per-device dynamic channel name is exactly what broke) - filter to this
-          // widget's own bound device client-side.
-          Homey.on('glucose', function (result) {
-            if (!result || result.id !== boundDeviceId) return;
-            diag('realtime push received');
-            onData(result);
-          });
-          pollState();
-          pollTimer = setInterval(pollState, POLL_MS);
-        } else {
-          diag('no bound device - pick a follower in this widget\'s own settings');
-          document.getElementById('name').textContent = t('pickUser');
-        }
+      // This widget instance's own y-axis preference (widget.compose.json's own "chartScale"
+      // dropdown setting, see GD.sparkline's opts.chartMode).
+      var chartScaleSetting = Homey.getSettings().chartScale;
+      diag('Homey.getSettings().chartScale', chartScaleSetting);
+      chartMode = chartScaleSetting || 'normal';
+
+      if (lastPayload && lastPayload.id === boundDeviceId) {
+        // Repaint what's already on screen rather than blanking it: on a re-invocation the
+        // placeholder would otherwise replace live data until the next poll or push. Re-rendered
+        // rather than left alone so a chartScale change above takes effect immediately.
+        render(lastPayload);
+      } else {
+        // Either nothing has arrived yet, or this widget was just rebound to a different
+        // follower - the payload on screen describes the old one, so it and the staleness state
+        // derived from it are both dropped rather than shown under the new binding.
+        hadData = false;
+        render(null);
       }
+
+      if (!realtimeSubscribed) {
+        realtimeSubscribed = true;
+        // One shared channel for every follower (see broadcastDeviceState's own comment on why a
+        // per-device dynamic channel name is exactly what broke) - filter to this widget's own
+        // bound device client-side. boundDeviceId is read at call time rather than captured, so
+        // this one subscription keeps working across a rebind.
+        Homey.on('glucose', function (result) {
+          if (!result || !boundDeviceId || result.id !== boundDeviceId) return;
+          diag('realtime push received');
+          onData(result);
+        });
+      }
+
+      // Cleared and re-armed rather than created once, mirroring staleTimer just below, so a
+      // re-invocation can't stack duplicate intervals polling the same endpoint.
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+      if (boundDeviceId) {
+        pollState();
+        pollTimer = setInterval(pollState, POLL_MS);
+      } else {
+        diag('no bound device - pick a follower in this widget\'s own settings');
+        document.getElementById('name').textContent = t('pickUser');
+      }
+
       if (staleTimer) clearInterval(staleTimer);
       staleTimer = setInterval(applyStale, CHECK_MS);
     }
