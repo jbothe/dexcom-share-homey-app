@@ -529,6 +529,22 @@ open question stops affecting correctness either way — it is no longer worth c
 reason alone (`test/widget-preview.html` still can't exercise any of it, since it calls
 `render()` directly and never runs `onHomeyReady`).
 
+**On-device finding: saving the widget's settings reloads the page outright — it does not re-enter
+the existing context.** Observed on a real Homey dashboard viewed in iOS Safari with the Mac's
+remote Web Inspector attached: saving the settings modal drops the inspector connection entirely
+and requires reattaching to a new target, and the console comes back empty. A torn-down inspector
+target is a destroyed webview, not a re-entered one. **So on this path the four bugs above were
+never actually reachable** — the run-once guard the old structure relied on was, in fact, safe for
+a settings save, and the restructure above is defensive rather than a fix for something users were
+hitting. It is kept because it costs nothing and because *dashboard remount* — navigating between
+dashboards, backgrounding the app — is a different trigger that this observation says nothing
+about, and remains unconfirmed. Note the corollary for troubleshooting: `onHomeyReady`'s own
+`diag()` lines (the bound device, the chart scale) are emitted during the reload, so an inspector
+reattached *afterwards* has already missed them — an empty console here is an artifact of
+reattach timing, not evidence that the code did not run. Capturing them needs the log to outlive
+the page (a `localStorage` ring buffer dumped on next load, say), which this widget deliberately
+does not do today.
+
 Otherwise follows chargeiq's `power-flow` widget pattern: self-contained `public/index.html`
 (inline CSS+JS, no imports), styled purely via Homey's injected `--homey-*` vars/`.homey-text-*`
 classes (no local color fallback, no manual dark-mode detection), and a staleness watchdog (`.stale`
@@ -915,10 +931,12 @@ unconfirmed: the tap-to-cycle window control's `HomeyRef.hapticFeedback()` call 
 section) — the preview harness has no `HomeyRef` at all (see its own doc comment), so the tap
 cycling/thinning/pill logic was verified there, but the haptic itself has never fired outside a real
 Homey widget context. **Whether Homey re-invokes `onHomeyReady` in the same JS context** (rather
-than reloading the page) on a dashboard remount or a settings save is likewise still unconfirmed —
-but that one no longer has consequences: `onHomeyReady` was restructured to behave correctly under
-either answer, so it is documented in the Widget section as a resolved-by-construction question
-rather than a pending one. **Also unconfirmed: exactly how Homey's own Light/Dark/System app theme
+than reloading the page) is now answered for *one* of its two triggers: a **settings save reloads
+the page outright** (confirmed on-device via iOS Safari remote Web Inspector — see the Widget
+section), so the old run-once guard was in fact safe there. A **dashboard remount** is a separate
+trigger and stays unconfirmed. Either way it no longer has consequences: `onHomeyReady` was
+restructured to behave correctly under both answers, so the Widget section documents it as
+resolved-by-construction rather than pending. **Also unconfirmed: exactly how Homey's own Light/Dark/System app theme
 setting (Settings > Appearance) surfaces into a widget's webview.** The widget's real
 `_homey-variables.css` (`test/homey-css/widgets/`) is purely class-based (`.homey-dark-mode`, no
 `@media` block at all), so whatever Homey injects for its own semantic `--homey-*` tokens is
