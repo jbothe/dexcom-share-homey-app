@@ -736,6 +736,19 @@
     var hadData = false;
     var boundDeviceId = null;
     var pollTimer = null;
+    /**
+     * Quick catch-up delays for a poll that fails before this widget has ever rendered data.
+     * A dashboard opening while the app is still starting gets `Missing implementation for widget
+     * api "glucose-dashboard"` from Homey.api() - confirmed on-device, on the first page load
+     * after an app start, with every later load on the same Homey succeeding. The endpoint simply
+     * isn't registered yet. Falling back to the normal POLL_MS cadence there means the card can
+     * sit empty for a full minute in precisely the situation this pull path exists to cover
+     * (the realtime push only helps once some device's poller has actually completed a tick).
+     * Only used until the first successful render - after that POLL_MS is the right recovery.
+     */
+    var STARTUP_RETRY_MS = [2000, 5000, 10000, 20000];
+    var startupRetries = 0;
+    var startupRetryTimer = null;
 
     function applyStale() {
       var stale = hadData && (Date.now() - lastOkAt > STALE_MS);
@@ -763,6 +776,16 @@
         })
         .catch(function (err) {
           diag('poll failed', (err && err.message) || err);
+          // See STARTUP_RETRY_MS: retry soon rather than waiting a full POLL_MS, but only while
+          // nothing has ever rendered. `hadData` (not a flag of its own) is the condition on
+          // purpose - a realtime push arriving first also means the widget is live, so there is
+          // nothing left to catch up on and the retries stop either way.
+          if (hadData || startupRetries >= STARTUP_RETRY_MS.length) return;
+          var delay = STARTUP_RETRY_MS[startupRetries];
+          startupRetries += 1;
+          diag('retrying poll shortly', delay + 'ms (app may still be starting)');
+          if (startupRetryTimer) clearTimeout(startupRetryTimer);
+          startupRetryTimer = setTimeout(pollState, delay);
         });
     }
 
@@ -834,6 +857,9 @@
       // re-invocation can't stack duplicate intervals polling the same endpoint.
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = null;
+      if (startupRetryTimer) clearTimeout(startupRetryTimer);
+      startupRetryTimer = null;
+      startupRetries = 0;
       if (boundDeviceId) {
         pollState();
         pollTimer = setInterval(pollState, POLL_MS);

@@ -529,21 +529,32 @@ open question stops affecting correctness either way — it is no longer worth c
 reason alone (`test/widget-preview.html` still can't exercise any of it, since it calls
 `render()` directly and never runs `onHomeyReady`).
 
-**On-device finding: saving the widget's settings reloads the page outright — it does not re-enter
-the existing context.** Observed on a real Homey dashboard viewed in iOS Safari with the Mac's
-remote Web Inspector attached: saving the settings modal drops the inspector connection entirely
-and requires reattaching to a new target, and the console comes back empty. A torn-down inspector
-target is a destroyed webview, not a re-entered one. **So on this path the four bugs above were
-never actually reachable** — the run-once guard the old structure relied on was, in fact, safe for
-a settings save, and the restructure above is defensive rather than a fix for something users were
-hitting. It is kept because it costs nothing and because *dashboard remount* — navigating between
-dashboards, backgrounding the app — is a different trigger that this observation says nothing
-about, and remains unconfirmed. Note the corollary for troubleshooting: `onHomeyReady`'s own
-`diag()` lines (the bound device, the chart scale) are emitted during the reload, so an inspector
-reattached *afterwards* has already missed them — an empty console here is an artifact of
-reattach timing, not evidence that the code did not run. Capturing them needs the log to outlive
-the page (a `localStorage` ring buffer dumped on next load, say), which this widget deliberately
-does not do today.
+**On-device finding, now settled for every trigger: Homey ALWAYS reloads the widget's page. It
+never re-invokes `onHomeyReady` in an existing JS context.** Measured on a real Homey with a
+temporary `localStorage` ring buffer behind `diag()`, where each JS context tagged its lines with
+an id generated once per script evaluation, so a reload (new id, `invocation#=1`) is
+distinguishable from a re-entry (same id, `invocation#=2`). Six triggers in one session — first
+dashboard load, widget reload, navigating away and back, two settings saves, and closing and
+reopening the whole dashboard in the Homey app — produced **six distinct context ids, every one at
+`invocation#=1`**. **So none of the four bugs above were ever reachable in practice**, on any
+path: the run-once guard the old structure relied on was in fact safe, and the restructure is
+defensive hardening rather than a fix for something users were hitting. It is kept because it
+costs nothing, reads no worse, and would absorb a future firmware change to this behaviour — but
+do not describe it as having fixed a live bug.
+
+Two corollaries worth keeping, both of which cost real debugging time here:
+- **`onHomeyReady`'s own `diag()` lines are emitted during the reload**, so an inspector
+  reattached afterwards has always already missed them. An empty console after a settings save is
+  an artifact of reattach timing, not evidence that the code did not run — the recurring lines
+  (`poll result` every 60s, `realtime push received`) still appear, which is what makes the
+  startup lines' absence look misleading rather than obviously explained.
+- **A `localStorage` buffer only survives the reload if it is seeded from storage on load**, not
+  started empty. A buffer that starts empty and writes the whole array back overwrites the
+  previous page's lines on its first record, so it can never span a reload no matter how well
+  `localStorage` itself persists — and dumping it at script-evaluation time is equally useless,
+  since that lands in the same unwatched console as everything else. Dump on demand from the
+  console instead. This widget carries no such buffer today; add one the same way if this needs
+  revisiting.
 
 Otherwise follows chargeiq's `power-flow` widget pattern: self-contained `public/index.html`
 (inline CSS+JS, no imports), styled purely via Homey's injected `--homey-*` vars/`.homey-text-*`
@@ -580,7 +591,19 @@ new to say) — still leaves 3 poll attempts inside the 180s staleness window (s
 realtime channel is fully dead, the same 3x margin the staleness threshold itself assumes. Handled
 by `DexcomFollowApp.getWidgetStateForDeviceId()`, keyed by the same `data.id` the autocomplete
 setting uses — no separate id-translation step to go wrong here. **Confirmed working on a real
-device** (`[widget-api] getState lookup` matched, widget rendering live data). That lookup only
+device** (`[widget-api] getState lookup` matched, widget rendering live data).
+
+**That first call can legitimately fail while the app is still starting, and the widget retries it
+quickly rather than waiting out the full `POLL_MS`.** Observed on-device: a dashboard opened right
+after an app start got `Missing implementation for widget api "glucose-dashboard"` from
+`Homey.api()` on its very first load, while every later page load on the same Homey succeeded —
+the endpoint simply isn't registered yet at that moment. Falling back to the normal 60s cadence
+there would leave the card empty for up to a minute in exactly the situation this pull path exists
+to cover, since the realtime push only helps once some device's poller has completed a tick.
+`STARTUP_RETRY_MS` (2s → 5s → 10s → 20s) retries a failed poll on those tiers and then stops,
+gated on `hadData` rather than a flag of its own — a realtime push arriving first also means the
+widget is live, so the retries stand down either way. Only the pre-first-render case is treated
+this way; once anything has rendered, `POLL_MS` is the right recovery. That lookup only
 logs on a *miss* (`[widget-api] getState: no device found for <id>` - e.g. the widget's bound
 follower was since removed) rather than on every call, since a successful match on a ~60s poll forever would
 just be noise once device-binding itself is no longer in question. The widget's own console still
