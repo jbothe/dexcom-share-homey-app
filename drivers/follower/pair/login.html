@@ -94,8 +94,13 @@
     // actually happened client-side during a failed pair - the driver-side log (see driver.ts)
     // only sees what the client actually emitted, not what button the user pressed.
     function diag(msg, extra) {
+      // `extra` omitted rather than placeheld when absent - see the widget's own diag()
+      // (widgets/glucose-dashboard/public/index.html) for why '' is not the quiet option it
+      // looks like. Kept identical here so the two stay in step, as this file's counterpart
+      // comment claims they are.
+      var line = '[dexcom-pair:login] ' + msg;
       // eslint-disable-next-line no-console
-      console.log('[dexcom-pair:login] ' + msg, extra !== undefined ? extra : '');
+      console.log.apply(console, extra === undefined ? [line] : [line, extra]);
     }
 
     diag('view loaded');

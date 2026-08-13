@@ -2,6 +2,7 @@
 
 import { Units } from './dexcom/types';
 import { defaultUnitsForRegion, toDisplay } from './dexcom/units';
+import { DEFAULT_THRESHOLDS_MGDL } from './dexcom/thresholds';
 
 /**
  * This app supports unlimited devices, one per Dexcom Share account - unlike a
@@ -10,19 +11,6 @@ import { defaultUnitsForRegion, toDisplay } from './dexcom/units';
  * Dexcom Share account twice.
  */
 export const DUPLICATE_ACCOUNT_MESSAGE = 'This Dexcom Share account is already added as a follower.';
-
-/**
- * Threshold defaults, canonical mg/dL - mirrors driver.settings.compose.json's own hardcoded
- * `value` fields for urgentLowThreshold/lowThreshold/highThreshold. That schema file can only
- * ever hold one static default, expressed in mg/dL; a new device is offered these converted into
- * the unit inferred for that device's own region, rather than the raw mg/dL numbers verbatim -
- * otherwise a device paired into mmol/L would end up with mg/dL-scale numbers silently misread as
- * mmol/L everywhere they're used (alarm thresholds, the widget's sparkline domain), producing a
- * wildly wrong result rather than a unit-conversion no-op.
- */
-const DEFAULT_URGENT_LOW_MGDL = 55;
-const DEFAULT_LOW_MGDL = 70;
-const DEFAULT_HIGH_MGDL = 180;
 
 /**
  * Never log a raw username (and never a password at all) - only enough to tell one pairing
@@ -77,6 +65,14 @@ export function resolvePairList(
   const units = defaultUnitsForRegion(candidate.region);
   return {
     devices: [{
+      // The Dexcom username, which is usually an email address, is deliberately the offered
+      // name: it is the only thing that tells two followers apart at pair time, and this app is
+      // explicitly built for multiple accounts (see this file's own header). It is a *default* -
+      // the name is the user's to change on their own Homey afterward - so the alternatives
+      // considered (masking it via maskUsername, or a generic driver-name default) were rejected
+      // for making an unlimited-follower setup harder to read in exchange for hiding the user's
+      // own address from their own dashboard. Worth revisiting only if the name turns out to
+      // reach somewhere less private than the Homey it was paired on.
       name: candidate.username,
       data: { id: candidate.accountId },
       settings: {
@@ -84,9 +80,13 @@ export function resolvePairList(
         password: candidate.password,
         region: candidate.region,
         units,
-        urgentLowThreshold: toDisplay(DEFAULT_URGENT_LOW_MGDL, units),
-        lowThreshold: toDisplay(DEFAULT_LOW_MGDL, units),
-        highThreshold: toDisplay(DEFAULT_HIGH_MGDL, units),
+        // Offered converted into this device's own inferred unit, not as the raw mg/dL numbers:
+        // a device paired into mmol/L would otherwise hold mg/dL-scale numbers silently misread
+        // as mmol/L everywhere they're used (alarm thresholds, the widget's shaded zones),
+        // producing a wildly wrong result rather than a unit-conversion no-op.
+        urgentLowThreshold: toDisplay(DEFAULT_THRESHOLDS_MGDL.urgentLowMgDl, units),
+        lowThreshold: toDisplay(DEFAULT_THRESHOLDS_MGDL.lowMgDl, units),
+        highThreshold: toDisplay(DEFAULT_THRESHOLDS_MGDL.highMgDl, units),
       },
     }],
   };

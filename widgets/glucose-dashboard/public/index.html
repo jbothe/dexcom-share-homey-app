@@ -452,9 +452,18 @@
         // Same threshold cuts as the shaded zones above, applied to a single reading - a missing
         // threshold just can't push the value below/above it, so classification degrades to
         // 'normal' rather than erroring (matching how those zones drop when a bound is absent).
+        //
+        // The two low bounds are inclusive (<=), NOT exclusive, so this matches
+        // lib/dexcom/glucoseAlarms.ts's classifyGlucose() exactly at the boundary - that decides
+        // the alarm capabilities, and by way of payload.alarms the badge sitting right above this
+        // chart. They disagreed once, and at the *default* thresholds: a reading of exactly 70
+        // showed an orange "Low" badge above a green dot in the normal zone (and one of exactly
+        // 55, a red "Urgent Low" badge above an orange low-zone dot). Same class of bug as the
+        // badge's own text-vs-color split (see badgeText/BADGE_CLASS above): keep the comparison
+        // operators here in step with classifyGlucose's if either side ever changes.
         var zoneClass = function (mgdl) {
-          if (opts.urgentLowMgDl != null && mgdl < opts.urgentLowMgDl) return 'urgent-low';
-          if (opts.lowMgDl != null && mgdl < opts.lowMgDl) return 'low';
+          if (opts.urgentLowMgDl != null && mgdl <= opts.urgentLowMgDl) return 'urgent-low';
+          if (opts.lowMgDl != null && mgdl <= opts.lowMgDl) return 'low';
           if (opts.highMgDl != null && mgdl >= opts.highMgDl) return 'high';
           return 'normal';
         };
@@ -710,8 +719,14 @@
     // the bound device setting resolved to anything, and whether the realtime push and/or the
     // Homey.api() poll are actually firing - same pattern as pair/login.html's own diag().
     function diag(msg, extra) {
+      // `extra` is omitted entirely when there isn't one, rather than passed as a placeholder:
+      // console.log(line, undefined) prints a literal "undefined", but the '' used instead is no
+      // quieter - Safari's console renders an empty-string argument as a visible – "" after the
+      // message (noticed reading this widget's log over remote Web Inspector, where the
+      // argument-less lines looked like they had lost their payload).
+      var line = '[dexcom-widget] ' + msg;
       // eslint-disable-next-line no-console
-      console.log('[dexcom-widget] ' + msg, extra !== undefined ? extra : '');
+      console.log.apply(console, extra === undefined ? [line] : [line, extra]);
     }
 
     var CHECK_MS = 5000;
@@ -721,6 +736,19 @@
     var hadData = false;
     var boundDeviceId = null;
     var pollTimer = null;
+    /**
+     * Quick catch-up delays for a poll that fails before this widget has ever rendered data.
+     * A dashboard opening while the app is still starting gets `Missing implementation for widget
+     * api "glucose-dashboard"` from Homey.api() - confirmed on-device, on the first page load
+     * after an app start, with every later load on the same Homey succeeding. The endpoint simply
+     * isn't registered yet. Falling back to the normal POLL_MS cadence there means the card can
+     * sit empty for a full minute in precisely the situation this pull path exists to cover
+     * (the realtime push only helps once some device's poller has actually completed a tick).
+     * Only used until the first successful render - after that POLL_MS is the right recovery.
+     */
+    var STARTUP_RETRY_MS = [2000, 5000, 10000, 20000];
+    var startupRetries = 0;
+    var startupRetryTimer = null;
 
     function applyStale() {
       var stale = hadData && (Date.now() - lastOkAt > STALE_MS);
@@ -748,54 +776,98 @@
         })
         .catch(function (err) {
           diag('poll failed', (err && err.message) || err);
+          // See STARTUP_RETRY_MS: retry soon rather than waiting a full POLL_MS, but only while
+          // nothing has ever rendered. `hadData` (not a flag of its own) is the condition on
+          // purpose - a realtime push arriving first also means the widget is live, so there is
+          // nothing left to catch up on and the retries stop either way.
+          if (hadData || startupRetries >= STARTUP_RETRY_MS.length) return;
+          var delay = STARTUP_RETRY_MS[startupRetries];
+          startupRetries += 1;
+          diag('retrying poll shortly', delay + 'ms (app may still be starting)');
+          if (startupRetryTimer) clearTimeout(startupRetryTimer);
+          startupRetryTimer = setTimeout(pollState, delay);
         });
     }
 
-    // Guarded against Homey re-invoking onHomeyReady on every dashboard remount, same
-    // duplicate-listener fix as widgets/power-flow (see its own comment for the incident
-    // this prevents).
-    var readyListenerAttached = false;
+    // The realtime subscription is the one thing here that must happen exactly once: the widget
+    // Homey object exposes no off(), so re-subscribing would stack duplicate handlers (same
+    // incident as widgets/power-flow, see its own comment). Everything ELSE in onHomeyReady is
+    // deliberately re-run on every invocation - see its own comment.
+    var realtimeSubscribed = false;
     var staleTimer = null;
 
+    /**
+     * Written to be correct whether or not Homey re-invokes this in the same JS context on a
+     * dashboard remount or a settings save - which is genuinely unconfirmed (see CLAUDE.md's
+     * "Not yet verified"), and which the old structure had to guess at. It read the settings and
+     * issued its first poll inside a run-once guard, so IF Homey does re-invoke it here, this
+     * widget would pin itself to whichever device and chart scale it saw at first load and
+     * silently ignore every later settings edit, while render(null) blanked a card that already
+     * had data and the guarded pollState() skipped the repaint that would have refilled it -
+     * leaving it empty for up to POLL_MS. Re-reading settings and re-arming timers on each call
+     * costs nothing on the single-invocation path and is correct on both, so the answer stops
+     * mattering.
+     */
     function onHomeyReady(Homey) {
       HomeyRef = Homey;
       Homey.ready();
-      render(null);
-      if (!readyListenerAttached) {
-        readyListenerAttached = true;
-        // This widget instance is bound to exactly one follower via its own "device"
-        // autocomplete setting (widget.compose.json + app.ts's
-        // registerWidgetDevicePicker) - not Homey's native "devices" widget setting, which
-        // handed back an id this app had no documented way to resolve to one of its own
-        // devices (see CLAUDE.md's Widget section). The settings value is populated with this
-        // app's own data.id, so it needs no separate translation step here.
-        var deviceSetting = Homey.getSettings().device;
-        diag('Homey.getSettings().device', deviceSetting);
-        boundDeviceId = (deviceSetting && deviceSetting.id) || null;
 
-        // This widget instance's own y-axis preference (widget.compose.json's own "chartScale"
-        // dropdown setting, see GD.sparkline's opts.chartMode) - read once alongside the device
-        // binding above, same cadence/guard.
-        var chartScaleSetting = Homey.getSettings().chartScale;
-        diag('Homey.getSettings().chartScale', chartScaleSetting);
-        chartMode = chartScaleSetting || 'normal';
+      // This widget instance is bound to exactly one follower via its own "device" autocomplete
+      // setting (widget.compose.json + app.ts's registerWidgetDevicePicker) - not Homey's native
+      // "devices" widget setting, which handed back an id this app had no documented way to
+      // resolve to one of its own devices (see CLAUDE.md's Widget section). The settings value is
+      // populated with this app's own data.id, so it needs no separate translation step here.
+      var deviceSetting = Homey.getSettings().device;
+      diag('Homey.getSettings().device', deviceSetting);
+      boundDeviceId = (deviceSetting && deviceSetting.id) || null;
 
-        if (boundDeviceId) {
-          // One shared channel for every follower (see broadcastDeviceState's own comment on
-          // why a per-device dynamic channel name is exactly what broke) - filter to this
-          // widget's own bound device client-side.
-          Homey.on('glucose', function (result) {
-            if (!result || result.id !== boundDeviceId) return;
-            diag('realtime push received');
-            onData(result);
-          });
-          pollState();
-          pollTimer = setInterval(pollState, POLL_MS);
-        } else {
-          diag('no bound device - pick a follower in this widget\'s own settings');
-          document.getElementById('name').textContent = t('pickUser');
-        }
+      // This widget instance's own y-axis preference (widget.compose.json's own "chartScale"
+      // dropdown setting, see GD.sparkline's opts.chartMode).
+      var chartScaleSetting = Homey.getSettings().chartScale;
+      diag('Homey.getSettings().chartScale', chartScaleSetting);
+      chartMode = chartScaleSetting || 'normal';
+
+      if (lastPayload && lastPayload.id === boundDeviceId) {
+        // Repaint what's already on screen rather than blanking it: on a re-invocation the
+        // placeholder would otherwise replace live data until the next poll or push. Re-rendered
+        // rather than left alone so a chartScale change above takes effect immediately.
+        render(lastPayload);
+      } else {
+        // Either nothing has arrived yet, or this widget was just rebound to a different
+        // follower - the payload on screen describes the old one, so it and the staleness state
+        // derived from it are both dropped rather than shown under the new binding.
+        hadData = false;
+        render(null);
       }
+
+      if (!realtimeSubscribed) {
+        realtimeSubscribed = true;
+        // One shared channel for every follower (see broadcastDeviceState's own comment on why a
+        // per-device dynamic channel name is exactly what broke) - filter to this widget's own
+        // bound device client-side. boundDeviceId is read at call time rather than captured, so
+        // this one subscription keeps working across a rebind.
+        Homey.on('glucose', function (result) {
+          if (!result || !boundDeviceId || result.id !== boundDeviceId) return;
+          diag('realtime push received');
+          onData(result);
+        });
+      }
+
+      // Cleared and re-armed rather than created once, mirroring staleTimer just below, so a
+      // re-invocation can't stack duplicate intervals polling the same endpoint.
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+      if (startupRetryTimer) clearTimeout(startupRetryTimer);
+      startupRetryTimer = null;
+      startupRetries = 0;
+      if (boundDeviceId) {
+        pollState();
+        pollTimer = setInterval(pollState, POLL_MS);
+      } else {
+        diag('no bound device - pick a follower in this widget\'s own settings');
+        document.getElementById('name').textContent = t('pickUser');
+      }
+
       if (staleTimer) clearInterval(staleTimer);
       staleTimer = setInterval(applyStale, CHECK_MS);
     }

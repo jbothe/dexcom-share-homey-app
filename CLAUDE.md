@@ -72,7 +72,7 @@ was masking it). It affects any TypeScript Homey app whose tsconfig extends a pa
 - `homey-app-validate.yml` — every `push`/`pull_request`, at **`level: verified`** (see Commands:
   stricter than `publish`, and the real gate). Deliberately not downgraded to `publish` to make it
   pass — `verified` is what the App Store requires anyway, so it is the honest gate. After `npm ci`
-  it also runs **`npm run lint` then `npm test`** (the 76 unit tests), ahead of the validate action,
+  it also runs **`npm run lint` then `npm test`** (104 unit tests), ahead of the validate action,
   so a lib/ logic or style regression is enforced in CI and surfaces before a manifest one — the
   manifest validation alone would not have caught either.
 - `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, cuts a GitHub
@@ -94,8 +94,37 @@ loop that aggregates every device's already-polled state.
   device unavailable — deliberately *not* retried quickly, to avoid compounding a real Dexcom account
   lockout. One persistent client is reused across polls, rebuilt only when username/password/region
   actually change (a fingerprint check), not on unrelated threshold-only settings saves.
-- Each successful tick makes **one** `getGlucoseReadings(180, 36)` call, serving both the latest-value
-  capabilities and the widget's 3h history — no separate rolling buffer.
+- **The normal cadence is anchored to the *reading's own* timestamp, not to when the last poll
+  happened** (`computeNextPollDelayMs`, exported for direct unit testing). Scheduling a flat 5 min
+  after each poll compounds any lag between Dexcom's sample clock and ours forever: if the first
+  reading fetched is already two minutes stale, every later poll lands two minutes late. Targeting
+  `lastKnownReadingTimeMs + 5min` re-aligns on every tick, clamped to a 30s floor and the 5 min
+  ceiling. A poll that *succeeds* but yields no genuinely new reading has no fresh timestamp to
+  anchor to, so `MISSED_READING_BACKOFF_MS` (30s → 60s → 300s, indexed by consecutive-miss count)
+  retries quickly at first and then settles, rather than hammering a stalled account every 30s
+  forever.
+- Each successful tick makes **one** `getGlucoseReadings(1440, 288)` call — Dexcom Share's own
+  ceiling — serving both the latest-value capabilities and the widget's history (whose display
+  window is tap-to-cycle across 3h/6h/12h/24h, see the Widget section), with no separate rolling
+  buffer.
+- **The client build happens *inside* `tick()`'s own try/catch, and `start()` deliberately does not
+  build one of its own.** Both were once outside it, so a `clientFactory` failure — most plausibly
+  `client.ts`'s dynamic ESM `import()` failing on a real Homey, which is still unverified there
+  (see "Not yet verified") — rejected before reaching `applyNoDataAlarm()` or `scheduleNextTick()`:
+  **the self-rearming loop never rearmed**, leaving the device with no timer at all and so no retry
+  until the app restarted or settings were saved. It also wrote no capabilities whatsoever, not even
+  `alarm_no_data`, so the tile showed nothing rather than "No Data" — and on the timer path the
+  default `setTimer` wrapper's own `.catch(() => {})` swallowed the error entirely. A build failure
+  is now just another tick failure: it backs off through the transient tiers and retries. Confirmed
+  dead-on-arrival before the fix (zero timers scheduled) and regression-tested in
+  `test/dexcom-poller.test.ts`.
+- **`refreshConfig()` commits the credentials fingerprint only *after* the build resolves**, and
+  drops the superseded client before attempting a new one. Recording it up front (as it once did)
+  meant a failed build left the poller claiming to be current while still holding the *previous*
+  account's client — so every later `refreshConfig()` saw a matching fingerprint plus a live client,
+  skipped the rebuild, and went on polling the old account indefinitely while the device's own
+  settings showed the new one. Leaving `client` null on failure is what lets the next tick retry the
+  build at all. Regression-tested in `test/dexcom-poller.test.ts`.
 - **`glucose_data_age`** (minutes since the last reading) is deliberately *not* written from
   `DexcomPoller` alongside the other capabilities. A tick-only update would only refresh every 5
   minutes and drift stale in between (unlike the widget's own "Xm ago" text, which re-renders from
@@ -106,7 +135,16 @@ loop that aggregates every device's already-polled state.
   formula as the widget's `fmtAgo`, and pushes it through `device.ts`'s `setDataAgeMinutes()`. So
   the capability updates on the same cadence as the dashboard and always agrees with what it shows,
   without teaching the poller itself about wall-clock-driven (as opposed to tick-driven) capability
-  writes.
+  writes. **A null result (no reading has ever arrived) is deliberately left unwritten**, not
+  coerced to a number: Homey's own unset value for a numeric capability is already null, which the
+  tile renders as unknown — the honest display for "there is no reading to measure the age of".
+  Writing `0` to make the capability always-present, by analogy with the
+  `initializeAlarmCapabilities()` force-write below, would be a real bug: `0` reads as "0 minutes
+  old", i.e. perfectly fresh, exactly backwards on a device that has never reported. The alarms
+  differ only because `false` genuinely *is* their "nothing wrong" value; this capability has none,
+  the same reason `measure_glucose`/`glucose_trend` stay unwritten on an empty poll. `updatedAt`
+  never returns to null once set, so this only ever applies before the first reading, never as a
+  regression on a device that was previously reporting.
 - **Severity is a derived band** (`lib/dexcom/glucoseAlarms.ts`'s `classifyGlucose`), not three
   independent threshold checks: `alarm_urgent_low`/`alarm_low`/`alarm_high` are mutually exclusive.
   `alarm_rapid_change` is independent (true on `DoubleUp`/`DoubleDown` trend). Capability writes and
@@ -221,6 +259,19 @@ was last saved. `glucoseAlarms.ts` itself only ever sees canonical mg/dL — con
 skip this conversion and compare the raw stored number directly against a canonical-mg/dL reading —
 a real bug, silently misclassifying severity whenever mmol/L was the active unit; fixed alongside
 this move, regression-tested in `test/dexcom-poller.test.ts`.)
+
+**That settings-to-canonical-mg/dL read is one shared function, `thresholds.ts`'s
+`thresholdsFromSettings(read, units)`**, used by both `DexcomPoller.thresholds()` (severity
+classification) and `device.ts`'s `getWidgetSnapshot()` (the widget's shaded zones), with
+`DEFAULT_THRESHOLDS_MGDL` as the single copy of the 55/70/180 fallbacks that `pairing.ts` also
+offers new devices. All three previously carried their own copy of those numbers — and
+`getWidgetSnapshot()` carried *no* fallback at all, so an absent setting became
+`toMgdl(undefined)` → `NaN`, which fails silently in both directions it can travel: a NaN bound
+classifies every reading as `normal`, and it reaches the widget as a zone rect with NaN geometry
+that simply doesn't draw. Only reachable if a threshold setting were genuinely missing (the
+compose schema supplies defaults, so this was defensive), but the duplication was the real
+hazard — the two paths could disagree about the same device's bands. A non-finite or non-numeric
+stored value now falls back per-bound rather than propagating.
 
 **`measure_glucose` is stored in the device's *display* unit, not canonical mg/dL** — the poller
 writes `toDisplay(mgDl, units)` (`DexcomPoller.ts`), and `device.ts`'s `refreshCapabilityOptions()`
@@ -458,6 +509,53 @@ same problem the same way:
 the widget to a dashboard no longer shows a device-picker step at add-time — the user picks their
 follower afterward, in the widget's own settings (its edit/gear icon on the dashboard).
 
+**`onHomeyReady` is written to be correct whether or not Homey re-invokes it in the same JS
+context** (on a dashboard remount or a settings save) — which is genuinely unconfirmed, so rather
+than guessing, everything except the realtime subscription is re-run on every call. The old
+structure read the settings and issued its first poll inside a run-once guard, which is only safe
+if Homey always reloads the page instead. If it does *not*, that guard produced four distinct
+bugs, all confirmed by driving the real `onHomeyReady` through a stubbed `Homey`/DOM under repeat
+invocation: a `chartScale` change was ignored; the card was blanked by `render(null)` while the
+guarded `pollState()` skipped the repaint that would have refilled it, leaving it empty for up to
+`POLL_MS`; a rebind to a different follower was ignored entirely; and — worst for a CGM app — the
+realtime handler kept accepting pushes for the **previously** bound follower, so the widget went
+on showing another person's readings. Only the `Homey.on('glucose', ...)` subscription is still
+once-only (the widget `Homey` exposes no `off()`, so re-subscribing stacks duplicate handlers —
+the incident `widgets/power-flow` documents); `boundDeviceId` is read *inside* that handler rather
+than captured, so the single subscription survives a rebind. `pollTimer` is cleared and re-armed
+each call, mirroring `staleTimer`'s own existing pattern, so a re-invocation can't stack
+intervals. Re-running all of this costs nothing on the single-invocation path, so the
+open question stops affecting correctness either way — it is no longer worth chasing for this
+reason alone (`test/widget-preview.html` still can't exercise any of it, since it calls
+`render()` directly and never runs `onHomeyReady`).
+
+**On-device finding, now settled for every trigger: Homey ALWAYS reloads the widget's page. It
+never re-invokes `onHomeyReady` in an existing JS context.** Measured on a real Homey with a
+temporary `localStorage` ring buffer behind `diag()`, where each JS context tagged its lines with
+an id generated once per script evaluation, so a reload (new id, `invocation#=1`) is
+distinguishable from a re-entry (same id, `invocation#=2`). Six triggers in one session — first
+dashboard load, widget reload, navigating away and back, two settings saves, and closing and
+reopening the whole dashboard in the Homey app — produced **six distinct context ids, every one at
+`invocation#=1`**. **So none of the four bugs above were ever reachable in practice**, on any
+path: the run-once guard the old structure relied on was in fact safe, and the restructure is
+defensive hardening rather than a fix for something users were hitting. It is kept because it
+costs nothing, reads no worse, and would absorb a future firmware change to this behaviour — but
+do not describe it as having fixed a live bug.
+
+Two corollaries worth keeping, both of which cost real debugging time here:
+- **`onHomeyReady`'s own `diag()` lines are emitted during the reload**, so an inspector
+  reattached afterwards has always already missed them. An empty console after a settings save is
+  an artifact of reattach timing, not evidence that the code did not run — the recurring lines
+  (`poll result` every 60s, `realtime push received`) still appear, which is what makes the
+  startup lines' absence look misleading rather than obviously explained.
+- **A `localStorage` buffer only survives the reload if it is seeded from storage on load**, not
+  started empty. A buffer that starts empty and writes the whole array back overwrites the
+  previous page's lines on its first record, so it can never span a reload no matter how well
+  `localStorage` itself persists — and dumping it at script-evaluation time is equally useless,
+  since that lands in the same unwatched console as everything else. Dump on demand from the
+  console instead. This widget carries no such buffer today; add one the same way if this needs
+  revisiting.
+
 Otherwise follows chargeiq's `power-flow` widget pattern: self-contained `public/index.html`
 (inline CSS+JS, no imports), styled purely via Homey's injected `--homey-*` vars/`.homey-text-*`
 classes (no local color fallback, no manual dark-mode detection), and a staleness watchdog (`.stale`
@@ -493,7 +591,19 @@ new to say) — still leaves 3 poll attempts inside the 180s staleness window (s
 realtime channel is fully dead, the same 3x margin the staleness threshold itself assumes. Handled
 by `DexcomFollowApp.getWidgetStateForDeviceId()`, keyed by the same `data.id` the autocomplete
 setting uses — no separate id-translation step to go wrong here. **Confirmed working on a real
-device** (`[widget-api] getState lookup` matched, widget rendering live data). That lookup only
+device** (`[widget-api] getState lookup` matched, widget rendering live data).
+
+**That first call can legitimately fail while the app is still starting, and the widget retries it
+quickly rather than waiting out the full `POLL_MS`.** Observed on-device: a dashboard opened right
+after an app start got `Missing implementation for widget api "glucose-dashboard"` from
+`Homey.api()` on its very first load, while every later page load on the same Homey succeeded —
+the endpoint simply isn't registered yet at that moment. Falling back to the normal 60s cadence
+there would leave the card empty for up to a minute in exactly the situation this pull path exists
+to cover, since the realtime push only helps once some device's poller has completed a tick.
+`STARTUP_RETRY_MS` (2s → 5s → 10s → 20s) retries a failed poll on those tiers and then stops,
+gated on `hadData` rather than a flag of its own — a realtime push arriving first also means the
+widget is live, so the retries stand down either way. Only the pre-first-render case is treated
+this way; once anything has rendered, `POLL_MS` is the right recovery. That lookup only
 logs on a *miss* (`[widget-api] getState: no device found for <id>` - e.g. the widget's bound
 follower was since removed) rather than on every call, since a successful match on a ~60s poll forever would
 just be noise once device-binding itself is no longer in question. The widget's own console still
@@ -843,7 +953,13 @@ above) — untested by design, same as the rest of the thin Homey adapters (see 
 unconfirmed: the tap-to-cycle window control's `HomeyRef.hapticFeedback()` call (see the Widget
 section) — the preview harness has no `HomeyRef` at all (see its own doc comment), so the tap
 cycling/thinning/pill logic was verified there, but the haptic itself has never fired outside a real
-Homey widget context. **Also unconfirmed: exactly how Homey's own Light/Dark/System app theme
+Homey widget context. **Whether Homey re-invokes `onHomeyReady` in the same JS context** (rather
+than reloading the page) is now answered for *one* of its two triggers: a **settings save reloads
+the page outright** (confirmed on-device via iOS Safari remote Web Inspector — see the Widget
+section), so the old run-once guard was in fact safe there. A **dashboard remount** is a separate
+trigger and stays unconfirmed. Either way it no longer has consequences: `onHomeyReady` was
+restructured to behave correctly under both answers, so the Widget section documents it as
+resolved-by-construction rather than pending. **Also unconfirmed: exactly how Homey's own Light/Dark/System app theme
 setting (Settings > Appearance) surfaces into a widget's webview.** The widget's real
 `_homey-variables.css` (`test/homey-css/widgets/`) is purely class-based (`.homey-dark-mode`, no
 `@media` block at all), so whatever Homey injects for its own semantic `--homey-*` tokens is

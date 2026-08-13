@@ -6,7 +6,8 @@ import {
 import {
   classifyGlucose, isRapidChange, isStale, rapidChangeDirection, severityToAlarms,
 } from './glucoseAlarms';
-import { toDisplay, toMgdl } from './units';
+import { toDisplay } from './units';
+import { thresholdsFromSettings } from './thresholds';
 import parseCorrectedEpoch from './timestamp';
 
 /** Minimal shape of a dexcom-share-client GlucoseReading this module actually needs. */
@@ -60,8 +61,8 @@ const MIN_POLL_DELAY_MS = 30_000;
  */
 const MISSED_READING_BACKOFF_MS = [MIN_POLL_DELAY_MS, 60_000, NORMAL_INTERVAL_MS];
 // Dexcom Share's own ceiling (dexcom-share-client's MAX_MINUTES/MAX_MAX_COUNT) - pulling the full
-// 24h lets the widget's history payload carry more than its own current fixed 3h display window
-// needs, so a future per-widget time-range setting can zoom out without any poller/payload change.
+// 24h is what lets the widget's own tap-to-cycle display window zoom out to 6h/12h/24h purely
+// client-side (see its WINDOW_OPTIONS_MS), with no poller or payload change per window.
 const HISTORY_MINUTES = 1440;
 const HISTORY_MAX_COUNT = 288;
 
@@ -172,9 +173,15 @@ export class DexcomPoller {
     this.clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   }
 
+  /**
+   * Deliberately does NOT call refreshConfig() itself: tick() already builds the client when it
+   * doesn't have one, and does it inside its own error handling. Calling it here as well would
+   * put the very first client build outside any catch, so a clientFactory failure (e.g. the
+   * ESM dynamic import in client.ts failing on a real Homey) would reject start() before it ever
+   * reached scheduleNextTick() - leaving the device with no timer at all and so no retry, ever.
+   */
   async start(): Promise<void> {
     this.stopped = false;
-    await this.refreshConfig();
     await this.tick('start');
   }
 
@@ -190,23 +197,40 @@ export class DexcomPoller {
     return this.snapshot;
   }
 
-  /** Rebuild the client only if username/password/region actually changed. */
+  /**
+   * Rebuild the client only if username/password/region actually changed.
+   *
+   * The fingerprint is committed only *after* the build resolves, and any client built from the
+   * now-superseded credentials is dropped before the attempt. Recording the fingerprint up front
+   * instead meant a failed build left the poller claiming to be current while still holding the
+   * previous account's client - so every later refreshConfig() saw a matching fingerprint plus a
+   * live client, skipped the rebuild, and went on polling the old account indefinitely while the
+   * device's own settings showed the new one. Leaving `client` null on failure is what lets
+   * tick() retry the build on its next run instead.
+   */
   async refreshConfig(): Promise<void> {
     const username = this.host.getSetting<string>('username') ?? '';
     const password = this.host.getSetting<string>('password') ?? '';
     const region = this.host.getSetting<string>('region') ?? 'us';
     const fingerprint = `${username} ${password} ${region}`;
-    if (fingerprint !== this.credentialsFingerprint || !this.client) {
-      this.credentialsFingerprint = fingerprint;
-      this.client = await this.clientFactory({ username, password, region });
-      this.transientFailureCount = 0;
-    }
+    if (fingerprint === this.credentialsFingerprint && this.client) return;
+    this.client = null;
+    const client = await this.clientFactory({ username, password, region });
+    this.client = client;
+    this.credentialsFingerprint = fingerprint;
+    this.transientFailureCount = 0;
   }
 
   /** Rate-limited manual refresh entry point for the "Refresh glucose now" flow action. */
   async requestImmediateRefresh(): Promise<void> {
     const nowMs = this.now();
     if (this.lastTickAt !== null && nowMs - this.lastTickAt < MIN_REFRESH_GAP_MS) {
+      // Deliberately resolves rather than throwing: the "Refresh glucose now" Flow action would
+      // otherwise mark the whole Flow as failed over a benign rate limit. Logged so that a user
+      // wondering why their manual refresh appeared to do nothing can see that it was skipped,
+      // and why - without it this is entirely silent from both the Flow and the log.
+      const agoSec = Math.round((nowMs - this.lastTickAt) / 1000);
+      this.host.log(`[manual] refresh skipped, last poll was ${agoSec}s ago (min gap ${MIN_REFRESH_GAP_MS / 1000}s)`);
       return;
     }
     if (this.timerHandle !== null) {
@@ -216,24 +240,12 @@ export class DexcomPoller {
     await this.tick('manual');
   }
 
-  /**
-   * Threshold settings are stored in whatever unit is currently active (mg/dL or mmol/L - see
-   * CLAUDE.md's Units section), never canonical mg/dL by themselves. Each must be converted via
-   * the device's own current unit before comparison against a reading's canonical mg/dL value -
-   * skipping this silently misclassifies severity whenever mmol/L is the active unit (e.g. a
-   * stored "3.9" read as if it meant 3.9 mg/dL instead of the ~70 mg/dL it actually represents).
-   */
+  /** See thresholdsFromSettings for why the stored numbers can't be compared raw. */
   private thresholds(): AlarmThresholds {
-    const units = this.host.getUnits();
-    const mgDl = (key: string, fallbackMgDl: number): number => {
-      const value = this.host.getSetting<number>(key);
-      return value === undefined ? fallbackMgDl : toMgdl(value, units);
-    };
-    return {
-      urgentLowMgDl: mgDl('urgentLowThreshold', 55),
-      lowMgDl: mgDl('lowThreshold', 70),
-      highMgDl: mgDl('highThreshold', 180),
-    };
+    return thresholdsFromSettings(
+      (key) => this.host.getSetting<number>(key),
+      this.host.getUnits(),
+    );
   }
 
   private noDataTimeoutMin(): number {
@@ -250,11 +262,16 @@ export class DexcomPoller {
 
   private async tick(trigger: string): Promise<void> {
     this.lastTickAt = this.now();
-    if (!this.client) {
-      await this.refreshConfig();
-    }
     let nextDelay = NORMAL_INTERVAL_MS;
     try {
+      // Inside the try, not ahead of it: building the client can fail on its own (client.ts's
+      // dynamic ESM import, or the constructor rejecting its arguments), and an uncaught failure
+      // here would skip applyNoDataAlarm() and - critically - scheduleNextTick() below, killing
+      // this device's self-rearming loop outright with no timer left to recover it. Treated as
+      // just another tick failure instead, so it backs off and retries like any other.
+      if (!this.client) {
+        await this.refreshConfig();
+      }
       const readings = await this.client!.getGlucoseReadings(HISTORY_MINUTES, HISTORY_MAX_COUNT);
       this.host.log(`[${trigger}] Dexcom poll succeeded, ${readings.length} reading(s)`);
       this.transientFailureCount = 0;
@@ -280,6 +297,12 @@ export class DexcomPoller {
       const message = 'Check Dexcom Share credentials in device settings';
       this.host.setUnavailable(message);
       this.host.setWarning(message);
+      // Ends the consecutive-transient-failure streak: the tiers below mean "how many transient
+      // failures in a row", and an account error is a different failure class handled by its own
+      // much longer backoff. Left un-reset, an account error in the middle of a transient streak
+      // preserved the tier count across it, so the next transient failure resumed at 300s rather
+      // than starting over at 60s.
+      this.transientFailureCount = 0;
       return ACCOUNT_ERROR_BACKOFF_MS;
     }
     this.host.error(`[${trigger}] Dexcom poll failed`, error);

@@ -24,9 +24,10 @@ export interface AlarmState {
 
 /**
  * One point of the poller's history, oldest-to-newest, mg/dL. Carries the full 24h Dexcom Share
- * allows (DexcomPoller.ts's HISTORY_MINUTES/HISTORY_MAX_COUNT) - the widget's own sparkline
- * currently windows this down to a fixed 3h client-side (see its own WINDOW_MS), but the payload
- * itself already carries enough for a wider/configurable range without any poller change.
+ * allows (DexcomPoller.ts's HISTORY_MINUTES/HISTORY_MAX_COUNT). The widget's own sparkline windows
+ * this down client-side to whichever of its four display windows is current (3h/6h/12h/24h, cycled
+ * by tapping the chart - see its own WINDOW_OPTIONS_MS), so the payload already carries enough for
+ * the widest of them without any poller change.
  */
 export interface HistoryPoint {
   t: number;

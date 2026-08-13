@@ -133,6 +133,52 @@ test('fmtTick: mg/dL rounds to an integer, mmol/L keeps one decimal', () => {
   assert.equal(GD.fmtTick(3.94, 'mmol'), '3.9');
 });
 
+/**
+ * The three y-axis treatments behind widget.compose.json's own "chartScale" setting, which
+ * render() passes through as opts.chartMode. Asserted through the dot's y position and the tick
+ * labels together: those are the only two observable effects the mode has, and a viewport of
+ * height 90 makes each expected y exact rather than approximate.
+ */
+type Spark = { dots: { y: number }[]; yTicks: { label: string }[] };
+
+function sparkAt(mgDl: number, chartMode?: string, units = 'mgdl'): Spark {
+  return GD.sparkline([{ t: SPARK_NOW - 60_000, v: mgDl }], units, {
+    width: 260, height: 90, urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180, nowMs: SPARK_NOW, chartMode,
+  }) as Spark;
+}
+
+test('sparkline: chartMode "capped" narrows the domain top to 300 mg/dL and pins a higher reading to the top edge', () => {
+  const capped = sparkAt(350, 'capped');
+  assert.deepEqual(capped.yTicks.map((t) => t.label), ['300', '40']);
+  assert.equal(capped.dots[0].y, 0, 'an above-ceiling reading pins to the top rather than escaping the viewport');
+  // Below the ceiling, the reading still lands proportionally within the narrowed domain -
+  // higher up than the same reading would sit on the full 40-400 axis, which is the point.
+  assert.equal(sparkAt(120, 'capped').dots[0].y, (1 - (120 - 40) / (300 - 40)) * 90);
+  assert.ok(sparkAt(120, 'capped').dots[0].y < sparkAt(120, 'normal').dots[0].y);
+});
+
+test('sparkline: chartMode "log" keeps the full domain but gives the normal range more room than a linear axis', () => {
+  const log = sparkAt(120, 'log');
+  assert.deepEqual(log.yTicks.map((t) => t.label), ['400', '40'], 'log keeps the full sensor range, unlike capped');
+  const expectedFrac = (Math.log(120) - Math.log(40)) / (Math.log(400) - Math.log(40));
+  assert.ok(Math.abs(log.dots[0].y - (1 - expectedFrac) * 90) < 1e-9);
+  assert.ok(log.dots[0].y < sparkAt(120, 'normal').dots[0].y, 'a normal-range reading sits higher than on the linear axis');
+  // Nothing is clamped away at the top: 350 still lands below the ceiling, unlike capped mode.
+  assert.ok(sparkAt(350, 'log').dots[0].y > 0);
+});
+
+test('sparkline: an absent or unrecognized chartMode is the plain linear 40-400 axis', () => {
+  const linear = (1 - (120 - 40) / (400 - 40)) * 90;
+  assert.equal(sparkAt(120, 'normal').dots[0].y, linear);
+  assert.equal(sparkAt(120, undefined).dots[0].y, linear, 'default for every widget until the setting is changed');
+  assert.equal(sparkAt(120, 'bogus').dots[0].y, linear, 'an unknown mode degrades to normal rather than erroring');
+});
+
+test('sparkline: capped mode expresses its 300 mg/dL ceiling in the display unit', () => {
+  assert.deepEqual(sparkAt(120, 'capped', 'mmol').yTicks.map((t) => t.label), ['16.7', '2.2']);
+  assert.deepEqual(sparkAt(120, 'normal', 'mmol').yTicks.map((t) => t.label), ['22.2', '2.2']);
+});
+
 test('sparkline: x-axis is a fixed WINDOW_MS-wide window anchored to now, not the data span', () => {
   const windowMs = GD.WINDOW_MS as unknown as number;
   // Two closely-spaced (gap-free) pairs at opposite ends of the window, far apart from each
@@ -190,6 +236,29 @@ test('sparkline: each dot and its incoming line carry the severity zone the arri
   assert.deepEqual(result.dots.map((d) => d.cls), ['normal', 'low', 'urgent-low', 'high']);
   // A per-pair segment is colored by the sample it arrives at (the later point).
   assert.deepEqual(result.segments.map((s) => s.cls), ['low', 'urgent-low', 'high']);
+});
+
+/**
+ * A reading exactly ON a threshold must land in the same band lib/dexcom/glucoseAlarms.ts's
+ * classifyGlucose() puts it in, since that drives the badge sitting directly above this chart.
+ * The two low bounds are inclusive there (<=), and were exclusive (<) here - so at the *default*
+ * thresholds, a reading of exactly 70 drew a green normal-zone dot under an orange "Low" badge,
+ * and one of exactly 55 an orange low-zone dot under a red "Urgent Low" badge.
+ */
+test('sparkline: a sample exactly on a threshold lands in the same zone classifyGlucose assigns it', () => {
+  const history = [55, 70, 180].map((v, i) => ({ t: SPARK_NOW - (2 - i) * 300_000, v }));
+  const result = GD.sparkline(history, 'mgdl', {
+    width: 260, height: 90, urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180, nowMs: SPARK_NOW,
+  }) as { dots: { cls: string }[] };
+  assert.deepEqual(result.dots.map((d) => d.cls), ['urgent-low', 'low', 'high']);
+});
+
+test('sparkline: the value just above a threshold still belongs to the band above it', () => {
+  const history = [56, 71].map((v, i) => ({ t: SPARK_NOW - (1 - i) * 300_000, v }));
+  const result = GD.sparkline(history, 'mgdl', {
+    width: 260, height: 90, urgentLowMgDl: 55, lowMgDl: 70, highMgDl: 180, nowMs: SPARK_NOW,
+  }) as { dots: { cls: string }[] };
+  assert.deepEqual(result.dots.map((d) => d.cls), ['low', 'normal']);
 });
 
 test('sparkline: without thresholds every sample classifies as normal rather than erroring', () => {

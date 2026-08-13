@@ -6,7 +6,7 @@ import { DexcomPollerHost, Units, WidgetSnapshot } from '../../lib/dexcom/types'
 import {
   toDisplay, toMgdl, unitDecimals, unitLabel,
 } from '../../lib/dexcom/units';
-import { resolveThresholdsOnSave } from '../../lib/dexcom/thresholds';
+import { resolveThresholdsOnSave, thresholdsFromSettings } from '../../lib/dexcom/thresholds';
 import { createDexcomClient } from '../../lib/dexcom/client';
 
 interface DexcomFollowApp extends Homey.App {
@@ -113,6 +113,16 @@ module.exports = class FollowerDevice extends Homey.Device {
   }
 
   /**
+   * Stop polling when this device is torn down but not deleted - an app update/restart or the
+   * device being disabled. Mostly belt-and-braces, since the app process usually dies with it,
+   * but onDeleted alone leaves the self-rearming timer running in every path that isn't an
+   * outright removal.
+   */
+  async onUninit() {
+    this.poller?.stop();
+  }
+
+  /**
    * Read model for app.ts's widget broadcast - both units included, unit-agnostic, plus all
    * three thresholds (converted to canonical mg/dL, same as the rest of the snapshot) so the
    * widget can shade its chart's severity zones without a separate settings lookup.
@@ -120,12 +130,14 @@ module.exports = class FollowerDevice extends Homey.Device {
   getWidgetSnapshot(): WidgetSnapshot | null {
     const snapshot = this.poller?.getSnapshot();
     if (!snapshot) return null;
-    const units = this.getUnits();
     return {
       ...snapshot,
-      urgentLowMgDl: toMgdl(this.getSetting('urgentLowThreshold') as number, units),
-      lowMgDl: toMgdl(this.getSetting('lowThreshold') as number, units),
-      highMgDl: toMgdl(this.getSetting('highThreshold') as number, units),
+      // Same shared resolver the poller's own severity classification uses, so the widget's
+      // shaded zones can't drift from the alarm bands they're meant to depict - and so a missing
+      // setting falls back to the documented default instead of converting undefined into a NaN
+      // bound, which reaches the widget as a zone rect with NaN geometry and silently fails to
+      // draw rather than erroring anywhere.
+      ...thresholdsFromSettings((key) => this.getSetting(key), this.getUnits()),
     };
   }
 
@@ -136,6 +148,18 @@ module.exports = class FollowerDevice extends Homey.Device {
    * dashboard shows at that same moment, not just at the (much less frequent) 5-minute poll
    * cadence - a tick-only update would drift stale between polls exactly like measure_glucose
    * would if it only updated once every 5 minutes.
+   *
+   * A null `minutes` (minutesSinceReading's answer while no reading has ever arrived) is
+   * deliberately left unwritten rather than coerced to a number. Homey's own unset value for a
+   * numeric capability is already null, which the tile renders as unknown - the honest display
+   * for "there is no reading to measure the age of". Do NOT be tempted to write 0 here to make
+   * the capability always-present, the way initializeAlarmCapabilities() force-writes the alarms
+   * (see DexcomPoller): 0 reads as "the data is 0 minutes old", i.e. perfectly fresh, which is
+   * the exact opposite of the truth on a device that has never reported. The alarms differ
+   * because false genuinely is their "nothing wrong" value; this capability has no such value,
+   * which is the same reason measure_glucose/glucose_trend are left unwritten on an empty poll.
+   * `updatedAt` never returns to null once set, so this only ever applies before the first
+   * reading - never as a regression from a device that was previously reporting.
    */
   setDataAgeMinutes(minutes: number | null): void {
     if (minutes !== null && this.hasCapability('glucose_data_age')) {
