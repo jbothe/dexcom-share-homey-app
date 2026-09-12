@@ -77,7 +77,9 @@ was masking it). It affects any TypeScript Homey app whose tsconfig extends a pa
   so a lib/ logic or style regression is enforced in CI and surfaces before a manifest one — the
   manifest validation alone would not have caught either.
 - `homey-app-version.yml` — manual dispatch (from `main`); bumps the version and writes
-  `.homeychangelog.json`, so the changelog is maintained *through this workflow*, not by hand. It
+  `.homeychangelog.json`, so the changelog is maintained *through this workflow*, not by hand. The
+  Athom action only bumps the Homey manifests, so it also runs `npm version` to keep
+  `package.json`/`package-lock.json` in step (1.0.3 shipped with `package.json` still at 1.0.2). It
   commits the bump to a `release/v<version>` branch and opens a PR instead of pushing to `main`,
   which is protected (one approving review plus the required "Validate Homey App" check) and so
   would reject the bot's direct push. A push or PR made with `GITHUB_TOKEN` doesn't trigger other

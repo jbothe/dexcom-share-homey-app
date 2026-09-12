@@ -45,6 +45,8 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git switch -c "$branch"
+          # The Athom action only bumps the Homey manifests; keep package.json in step.
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
           git add -A
           git commit -m "Update Homey App Version to v$VERSION"
           git push origin "$branch"
