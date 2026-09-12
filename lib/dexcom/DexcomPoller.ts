@@ -52,9 +52,9 @@ const ACCOUNT_ERROR_BACKOFF_MS = 15 * 60_000;
 /** requestImmediateRefresh() no-ops if the last tick was more recent than this. */
 const MIN_REFRESH_GAP_MS = 60_000;
 /**
- * Abandon any await in tick() after this long. dexcom-share-client's axios instance has no
- * timeout, so a black-holed request would otherwise hang tick() forever and it would never
- * reschedule itself.
+ * Abandon any await in tick() after this long, so it always reschedules itself. A backstop:
+ * client.ts gives each HTTP request its own shorter timeout (which is what actually closes the
+ * socket), but one poll can make several requests, and the client build isn't an HTTP call.
  */
 const POLL_TIMEOUT_MS = 60_000;
 /**
@@ -274,8 +274,8 @@ export class DexcomPoller {
   }
 
   /**
-   * Reject if `promise` hasn't settled within POLL_TIMEOUT_MS. The library has no abort signal, so
-   * the abandoned promise keeps running and its late result is ignored.
+   * Reject if `promise` hasn't settled within POLL_TIMEOUT_MS. The abandoned promise keeps running
+   * (each request in it is bounded by client.ts's timeout) and its late result is ignored.
    */
   private withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {

@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { describeDexcomError, isRecognizedDexcomError } from '../lib/dexcom/client';
+import { createDexcomClient, describeDexcomError, isRecognizedDexcomError } from '../lib/dexcom/client';
 
 /**
  * Only describeDexcomError is exercised here - it's the one pure function in client.ts. The rest
@@ -83,4 +83,11 @@ test('isRecognizedDexcomError is false for an unrecognised errorType or no error
   assert.equal(isRecognizedDexcomError(dexcomError('SomeNewErrorType')), false);
   assert.equal(isRecognizedDexcomError(new Error('getaddrinfo ENOTFOUND')), false);
   assert.equal(isRecognizedDexcomError(null), false);
+});
+
+test('createDexcomClient gives the library\'s axios instance a request timeout', async () => {
+  // Read through the private `_session`, so this also fails if a library upgrade renames it.
+  const client = await createDexcomClient({ username: 'u', password: 'p', region: 'us' });
+  const { timeout } = (client as unknown as { _session: { defaults: { timeout?: number } } })._session.defaults;
+  assert.ok(typeof timeout === 'number' && timeout > 0, `expected a positive timeout, got ${timeout}`);
 });

@@ -121,9 +121,13 @@ loop that aggregates every device's already-polled state.
 - **Only `stop()` can keep `tick()` from rescheduling itself.** A follower once froze on a stale
   reading (widget showing "-") until the app was restarted. There was no log for that period, so
   every restart-only failure found was closed:
-  - Every await in `tick()` goes through `withTimeout()` (`POLL_TIMEOUT_MS`, 60s).
-    `dexcom-share-client`'s axios instance has no timeout, so a black-holed request used to hang
-    `tick()` forever: no timer, nothing logged, device still available.
+  - `client.ts` sets a 15s timeout on the library's private axios instance (`_session`), which it
+    creates with none. Without one, a server that accepts the connection but never answers used
+    to hang `tick()` forever (no timer, nothing logged, device still available). Abandoning the
+    promise isn't enough on its own: against a local accept-and-stall server the socket stayed
+    open until axios's own timeout destroyed it, so each retry would have leaked another. Every
+    await in `tick()` also goes through `withTimeout()` (`POLL_TIMEOUT_MS`, 60s) as a backstop,
+    since one poll can make several requests.
   - After `FAILURES_BEFORE_RESET` (3) consecutive transient failures the client is dropped and a
     device warning set. The library can wedge itself: `_getSession()` stores the session id before
     validating it, so an all-zero `DEFAULT_UUID` from Dexcom makes every later call throw
@@ -136,7 +140,8 @@ loop that aggregates every device's already-polled state.
 
   An external watchdog was considered and rejected: it would have to out-wait the 15-minute
   `AccountError` backoff, so it would recover more slowly than these fixes. All four are
-  regression-tested in `test/dexcom-poller.test.ts`.
+  regression-tested in `test/dexcom-poller.test.ts`, and the request timeout in
+  `test/dexcom-client.test.ts`.
 - **`refreshConfig()` commits the credentials fingerprint only *after* the build resolves**, and
   drops the superseded client before attempting a new one. Recording it up front (as it once did)
   meant a failed build left the poller claiming to be current while still holding the *previous*
@@ -1066,9 +1071,10 @@ real decision-making shows up in one of those files, lift it into `lib/` and tes
 `driver.ts`, which is `module.exports = class` per the Homey template and so can't also carry a
 named export) both were.
 - `glucoseAlarms.ts` / `units.ts` / `pairing.ts` / `thresholds.ts` — plain function tests.
-- `client.ts` — only `describeDexcomError` (its one pure function). Importing the module from a
-  test is safe despite `dexcom-share-client` being ESM-only: the dynamic `import()` only ever runs
-  *inside* `createDexcomClient`/`verifyDexcomLogin`, so nothing loads at module scope.
+- `client.ts` — its pure error helpers, plus one test that builds a real client (no network) and
+  checks the request timeout is set on its private axios instance, so a library upgrade that
+  renames `_session` fails loudly. Importing the module is safe despite `dexcom-share-client`
+  being ESM-only: the dynamic `import()` only runs inside `createDexcomClient`/`verifyDexcomLogin`.
 - `DexcomPoller.ts` — constructor-injected fake client + a manually-advanced `FakeClock` (no real
   timers/network); covers cadence recovery, backoff tiers, edge-only capability writes, and
   `requestImmediateRefresh()`'s rate limit.
