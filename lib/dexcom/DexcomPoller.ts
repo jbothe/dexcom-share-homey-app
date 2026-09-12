@@ -51,6 +51,19 @@ const TRANSIENT_BACKOFF_MS = [60_000, 120_000, NORMAL_INTERVAL_MS];
 const ACCOUNT_ERROR_BACKOFF_MS = 15 * 60_000;
 /** requestImmediateRefresh() no-ops if the last tick was more recent than this. */
 const MIN_REFRESH_GAP_MS = 60_000;
+/**
+ * Abandon any await in tick() after this long, so it always reschedules itself. A backstop:
+ * client.ts gives each HTTP request its own shorter timeout (which is what actually closes the
+ * socket), but one poll can make several requests, and the client build isn't an HTTP call.
+ */
+const POLL_TIMEOUT_MS = 60_000;
+/**
+ * After this many consecutive transient failures, drop the client (the next tick builds a fresh
+ * one) and show a warning. The library can wedge itself - it keeps an all-zero session id that
+ * fails validation on every call - and only a new client clears that. Not done on the first
+ * failure because a rebuild re-authenticates, and Dexcom rate-limits logins.
+ */
+const FAILURES_BEFORE_RESET = 3;
 /** Floor for the reading-anchored delay below - never poll more often than this. */
 const MIN_POLL_DELAY_MS = 30_000;
 /**
@@ -260,6 +273,28 @@ export class DexcomPoller {
     this.timerHandle = this.setTimer(() => this.tick('timer'), delayMs);
   }
 
+  /**
+   * Reject if `promise` hasn't settled within POLL_TIMEOUT_MS. The abandoned promise keeps running
+   * (each request in it is bounded by client.ts's timeout) and its late result is ignored.
+   */
+  private withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timeoutHandle = this.setTimer(() => {
+        reject(new Error(`Dexcom ${label} timed out after ${POLL_TIMEOUT_MS / 1000}s`));
+      }, POLL_TIMEOUT_MS);
+      promise.then(
+        (value) => {
+          this.clearTimer(timeoutHandle);
+          resolve(value);
+        },
+        (error) => {
+          this.clearTimer(timeoutHandle);
+          reject(error);
+        },
+      );
+    });
+  }
+
   private async tick(trigger: string): Promise<void> {
     this.lastTickAt = this.now();
     let nextDelay = NORMAL_INTERVAL_MS;
@@ -270,9 +305,11 @@ export class DexcomPoller {
       // this device's self-rearming loop outright with no timer left to recover it. Treated as
       // just another tick failure instead, so it backs off and retries like any other.
       if (!this.client) {
-        await this.refreshConfig();
+        await this.withTimeout(this.refreshConfig(), 'client build');
       }
-      const readings = await this.client!.getGlucoseReadings(HISTORY_MINUTES, HISTORY_MAX_COUNT);
+      const readings = await this.withTimeout(
+        this.client!.getGlucoseReadings(HISTORY_MINUTES, HISTORY_MAX_COUNT), 'poll',
+      );
       this.host.log(`[${trigger}] Dexcom poll succeeded, ${readings.length} reading(s)`);
       this.transientFailureCount = 0;
       this.host.setAvailable();
@@ -284,10 +321,16 @@ export class DexcomPoller {
       );
     } catch (error) {
       nextDelay = this.handleError(error, trigger);
+    } finally {
+      // Always reschedule, even if the post-poll updates throw.
+      try {
+        this.applyNoDataAlarm();
+        this.host.onSnapshotUpdated?.();
+      } catch (error) {
+        this.host.error(`[${trigger}] post-poll update failed`, error);
+      }
+      this.scheduleNextTick(nextDelay);
     }
-    this.applyNoDataAlarm();
-    this.host.onSnapshotUpdated?.();
-    this.scheduleNextTick(nextDelay);
   }
 
   private handleError(error: unknown, trigger: string): number {
@@ -308,6 +351,12 @@ export class DexcomPoller {
     this.host.error(`[${trigger}] Dexcom poll failed`, error);
     const delay = TRANSIENT_BACKOFF_MS[Math.min(this.transientFailureCount, TRANSIENT_BACKOFF_MS.length - 1)];
     this.transientFailureCount += 1;
+    if (this.transientFailureCount >= FAILURES_BEFORE_RESET) {
+      // Only drop it; tick() rebuilds it inside its own try/catch.
+      this.host.log(`[${trigger}] ${this.transientFailureCount} consecutive failures, rebuilding Dexcom client`);
+      this.client = null;
+      this.host.setWarning('Cannot reach Dexcom Share right now - retrying');
+    }
     return delay;
   }
 

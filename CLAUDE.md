@@ -72,7 +72,7 @@ was masking it). It affects any TypeScript Homey app whose tsconfig extends a pa
 - `homey-app-validate.yml` — every `push`/`pull_request`, at **`level: verified`** (see Commands:
   stricter than `publish`, and the real gate). Deliberately not downgraded to `publish` to make it
   pass — `verified` is what the App Store requires anyway, so it is the honest gate. After `npm ci`
-  it also runs **`npm run lint` then `npm test`** (104 unit tests), ahead of the validate action,
+  it also runs **`npm run lint` then `npm test`** (114 unit tests), ahead of the validate action,
   so a lib/ logic or style regression is enforced in CI and surfaces before a manifest one — the
   manifest validation alone would not have caught either.
 - `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, cuts a GitHub
@@ -118,6 +118,30 @@ loop that aggregates every device's already-polled state.
   is now just another tick failure: it backs off through the transient tiers and retries. Confirmed
   dead-on-arrival before the fix (zero timers scheduled) and regression-tested in
   `test/dexcom-poller.test.ts`.
+- **Only `stop()` can keep `tick()` from rescheduling itself.** A follower once froze on a stale
+  reading (widget showing "-") until the app was restarted. There was no log for that period, so
+  every restart-only failure found was closed:
+  - `client.ts` sets a 15s timeout on the library's private axios instance (`_session`), which it
+    creates with none. Without one, a server that accepts the connection but never answers used
+    to hang `tick()` forever (no timer, nothing logged, device still available). Abandoning the
+    promise isn't enough on its own: against a local accept-and-stall server the socket stayed
+    open until axios's own timeout destroyed it, so each retry would have leaked another. Every
+    await in `tick()` also goes through `withTimeout()` (`POLL_TIMEOUT_MS`, 60s) as a backstop,
+    since one poll can make several requests.
+  - After `FAILURES_BEFORE_RESET` (3) consecutive transient failures the client is dropped and a
+    device warning set. The library can wedge itself: `_getSession()` stores the session id before
+    validating it, so an all-zero `DEFAULT_UUID` from Dexcom makes every later call throw
+    `ArgumentError`, and its own retry only handles `SessionError`. Not done sooner because a
+    rebuild re-authenticates and Dexcom rate-limits logins.
+  - `applyNoDataAlarm()`/`onSnapshotUpdated()` run in a `finally`, in their own try, ahead of
+    `scheduleNextTick()`.
+  - `client.ts`'s `loadDexcomModule` no longer caches a rejected import, which made one transient
+    failure permanent for every device.
+
+  An external watchdog was considered and rejected: it would have to out-wait the 15-minute
+  `AccountError` backoff, so it would recover more slowly than these fixes. All four are
+  regression-tested in `test/dexcom-poller.test.ts`, and the request timeout in
+  `test/dexcom-client.test.ts`.
 - **`refreshConfig()` commits the credentials fingerprint only *after* the build resolves**, and
   drops the superseded client before attempting a new one. Recording it up front (as it once did)
   meant a failed build left the poller claiming to be current while still holding the *previous*
@@ -1047,9 +1071,10 @@ real decision-making shows up in one of those files, lift it into `lib/` and tes
 `driver.ts`, which is `module.exports = class` per the Homey template and so can't also carry a
 named export) both were.
 - `glucoseAlarms.ts` / `units.ts` / `pairing.ts` / `thresholds.ts` — plain function tests.
-- `client.ts` — only `describeDexcomError` (its one pure function). Importing the module from a
-  test is safe despite `dexcom-share-client` being ESM-only: the dynamic `import()` only ever runs
-  *inside* `createDexcomClient`/`verifyDexcomLogin`, so nothing loads at module scope.
+- `client.ts` — its pure error helpers, plus one test that builds a real client (no network) and
+  checks the request timeout is set on its private axios instance, so a library upgrade that
+  renames `_session` fails loudly. Importing the module is safe despite `dexcom-share-client`
+  being ESM-only: the dynamic `import()` only runs inside `createDexcomClient`/`verifyDexcomLogin`.
 - `DexcomPoller.ts` — constructor-injected fake client + a manually-advanced `FakeClock` (no real
   timers/network); covers cadence recovery, backoff tiers, edge-only capability writes, and
   `requestImmediateRefresh()`'s rate limit.

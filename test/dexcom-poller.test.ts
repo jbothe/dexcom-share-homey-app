@@ -813,3 +813,138 @@ test('a stalled account (no new reading) retries quickly at first, then settles 
   // 30-second floor, and not still retrying quickly 10 minutes into a genuinely stalled account.
   assert.equal(client.calls, 4, `expected a bounded, tapering retry count, got ${client.calls}`);
 });
+
+/** Let a tick that was started but not awaited run up to its next timer. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
+test('a poll that never settles times out and the loop keeps running', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost();
+  let hang = true;
+  let client!: FakeClient;
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => {
+      client = new FakeClient(() => (hang
+        ? new Promise<DexcomReadingLike[]>(() => {})
+        : Promise.resolve([reading(100, 'Flat', new Date(clock.nowMs))])));
+      return client;
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  // Not awaited: this tick can't settle until the fake clock reaches the timeout.
+  const started = poller.start();
+  await flush();
+  assert.equal(client.calls, 1);
+
+  await clock.advance(60_000);
+  await started;
+  assert.ok(host.errors.length > 0, 'the hang is reported as a failed poll');
+
+  hang = false;
+  await clock.advance(60_000);
+  assert.equal(client.calls, 2);
+  assert.equal(host.capabilities.measure_glucose, 100);
+});
+
+test('a client failing repeatedly is thrown away and rebuilt', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost();
+  let builds = 0;
+  let shouldFail = true;
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => {
+      builds += 1;
+      return new FakeClient(async () => {
+        if (shouldFail) throw serverError();
+        return [reading(100, 'Flat', new Date(clock.nowMs))];
+      });
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  await poller.start();
+  assert.equal(builds, 1);
+  assert.equal(host.warning, null);
+
+  await clock.advance(60_000);
+  assert.equal(builds, 1, 'two failures do not force a re-login');
+
+  await clock.advance(120_000);
+  assert.equal(builds, 1, 'the third failure drops the client but does not rebuild it');
+  assert.ok(host.warning);
+
+  await clock.advance(5 * 60_000);
+  assert.equal(builds, 2, 'the next tick rebuilds it');
+
+  shouldFail = false;
+  await clock.advance(5 * 60_000);
+  assert.equal(host.capabilities.measure_glucose, 100);
+  assert.equal(host.warning, null, 'the warning clears on recovery');
+});
+
+test('a hung client build times out and the loop keeps running', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost();
+  let hang = true;
+  let builds = 0;
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => {
+      builds += 1;
+      if (hang) return new Promise<DexcomClientLike>(() => {});
+      return new FakeClient(async () => [reading(100, 'Flat', new Date(clock.nowMs))]);
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  const started = poller.start();
+  await flush();
+  assert.equal(builds, 1);
+
+  await clock.advance(60_000);
+  await started;
+
+  hang = false;
+  await clock.advance(60_000);
+  assert.equal(builds, 2);
+  assert.equal(host.capabilities.measure_glucose, 100);
+});
+
+test('a throw from the post-poll update does not stop the loop', async () => {
+  const clock = new FakeClock();
+  const host = new FakeHost();
+  let client!: FakeClient;
+  const poller = new DexcomPoller({
+    host,
+    clientFactory: () => {
+      client = new FakeClient(async () => [reading(100, 'Flat', new Date(clock.nowMs))]);
+      return client;
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  await poller.start();
+  host.onSnapshotUpdated = () => {
+    throw new Error('widget broadcast blew up');
+  };
+
+  await clock.advance(5 * 60_000);
+  assert.equal(client.calls, 2);
+  await clock.advance(5 * 60_000);
+  assert.equal(client.calls, 3);
+});

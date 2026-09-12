@@ -23,6 +23,11 @@ function loadDexcomModule(): Promise<DexcomModule> {
     // require()'d from CJS.
     // eslint-disable-next-line node/no-unsupported-features/es-syntax
     modulePromise = import('dexcom-share-client');
+    // Don't cache a failed import, or one transient failure breaks every device until restart.
+    modulePromise = modulePromise.catch((error) => {
+      modulePromise = null;
+      throw error;
+    });
   }
   return modulePromise;
 }
@@ -45,15 +50,27 @@ function regionEnumValue(module: DexcomModule, region: string): RegionCode {
   }
 }
 
+/**
+ * Per-request timeout for the library's axios instance, which it creates without one. Without it,
+ * a server that accepts the connection but never answers holds the socket forever - DexcomPoller's
+ * own timeout can only abandon the promise, so every retry would leak another socket.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 /** Build a real DexcomShare client. Used as the DexcomPoller clientFactory in device.ts. */
 export async function createDexcomClient(credentials: DexcomCredentialsInput): Promise<RealDexcomClient> {
   const dexcom = await loadDexcomModule();
   const DexcomShare = dexcom.default;
-  return new DexcomShare({
+  const client = new DexcomShare({
     username: credentials.username,
     password: credentials.password,
     region: regionEnumValue(dexcom, credentials.region),
   });
+  // There's no public option for this; `_session` is the library's private axios instance. A test
+  // fails if an upgrade renames it.
+  const session = (client as unknown as { _session?: { defaults: { timeout?: number } } })._session;
+  if (session) session.defaults.timeout = REQUEST_TIMEOUT_MS;
+  return client;
 }
 
 /**
