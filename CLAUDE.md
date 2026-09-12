@@ -58,7 +58,8 @@ Dexcom Share account, with no cap (`lib/pairing.ts` → `resolvePairList` only r
   copied over — none of that ships in a bare `homey app create` skeleton.
 
 ## CI (`.github/workflows/`)
-Three Athom workflows from the `homey app create` skeleton (chargeiq has none, so there was no
+Three Athom workflows from the `homey app create` skeleton, plus this app's own
+`homey-app-release.yml` (chargeiq has none, so there was no
 sibling precedent to copy). Repo: `github.com/jbothe/dexcom-share-homey-app`.
 
 **Every `athombv/*` step that compiles the app needs an explicit `actions/setup-node` + `npm ci`
@@ -75,9 +76,19 @@ was masking it). It affects any TypeScript Homey app whose tsconfig extends a pa
   it also runs **`npm run lint` then `npm test`** (114 unit tests), ahead of the validate action,
   so a lib/ logic or style regression is enforced in CI and surfaces before a manifest one — the
   manifest validation alone would not have caught either.
-- `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, cuts a GitHub
-  release. It writes `.homeychangelog.json`, so the changelog is maintained *through this workflow*,
-  not by hand. Has no compile step of its own, so it needs no install step.
+- `homey-app-version.yml` — manual dispatch (from `main`); bumps the version and writes
+  `.homeychangelog.json`, so the changelog is maintained *through this workflow*, not by hand. The
+  Athom action only bumps the Homey manifests, so it also runs `npm version` to keep
+  `package.json`/`package-lock.json` in step (1.0.3 shipped with `package.json` still at 1.0.2). It
+  commits the bump to a `release/v<version>` branch and opens a PR instead of pushing to `main`,
+  which is protected (one approving review plus the required "Validate Homey App" check) and so
+  would reject the bot's direct push. A push or PR made with `GITHUB_TOKEN` doesn't trigger other
+  workflows, so it dispatches `homey-app-validate.yml` on the branch itself; without that, the
+  required check would never report. Needs the repo setting "Allow GitHub Actions to create and
+  approve pull requests" (Settings → Actions → General). No compile step, so no install step.
+- `homey-app-release.yml` — runs when a `release/v*` PR from this repo is merged into the default
+  branch: tags the merge commit `v<version>` (read from `.homeycompose/app.json`) and cuts the
+  GitHub release, so neither exists until the bump has been reviewed.
 - `homey-app-publish.yml` — manual dispatch; needs a `HOMEY_PAT` repo secret that **does not exist
   yet**, so publishing is not actually wired up.
 
