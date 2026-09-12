@@ -72,7 +72,7 @@ was masking it). It affects any TypeScript Homey app whose tsconfig extends a pa
 - `homey-app-validate.yml` — every `push`/`pull_request`, at **`level: verified`** (see Commands:
   stricter than `publish`, and the real gate). Deliberately not downgraded to `publish` to make it
   pass — `verified` is what the App Store requires anyway, so it is the honest gate. After `npm ci`
-  it also runs **`npm run lint` then `npm test`** (104 unit tests), ahead of the validate action,
+  it also runs **`npm run lint` then `npm test`** (114 unit tests), ahead of the validate action,
   so a lib/ logic or style regression is enforced in CI and surfaces before a manifest one — the
   manifest validation alone would not have caught either.
 - `homey-app-version.yml` — manual dispatch; bumps the version, commits, tags, cuts a GitHub
@@ -118,6 +118,49 @@ loop that aggregates every device's already-polled state.
   is now just another tick failure: it backs off through the transient tiers and retries. Confirmed
   dead-on-arrival before the fix (zero timers scheduled) and regression-tested in
   `test/dexcom-poller.test.ts`.
+- **Every poll is raced against `POLL_TIMEOUT_MS` (60s), and the client is thrown away after
+  `REBUILD_CLIENT_AFTER_FAILURES` (3) consecutive transient failures.** Both address a real
+  reported incident - data went patchy, then the device froze on a stale reading and the widget
+  showed only "-", until the app was restarted - and both are failure modes where *only* a restart
+  could recover. (1) `dexcom-share-client` builds its axios instance as `axios.create({ headers })`
+  with no `timeout`, and Node adds no default, so a black-holed request (a dropped NAT/conntrack
+  entry after a network blip is the usual home-LAN cause) leaves `getGlucoseReadings()` pending
+  forever. `tick()` awaits it, so `scheduleNextTick()` at the bottom is never reached: the
+  self-rearming loop stops dead with **no timer left**, nothing logged, and the device still marked
+  available - the same "loop never rearmed" shape as the client-build bug below, reached by a
+  different route. `withTimeout()` turns it into an ordinary transient failure; the abandoned
+  promise is left running (the library exposes no abort signal) with a rejection handler attached
+  so a late failure can't become an unhandled rejection. (2) The client is otherwise long-lived and
+  rebuilt only on a credentials change, so any *internal* state it wedges itself into outlives
+  every retry. The library has at least one such state: `_getSession()` assigns the session id
+  before validating it, so if Dexcom returns the all-zero `DEFAULT_UUID` the validation throws an
+  `ArgumentError` while leaving `_sessionId` set to that invalid value - every later call then
+  skips session creation (the id is non-null), fails the same validation, and rethrows, since its
+  own retry path only re-authenticates on `SessionError`. Dropping the client (not rebuilding it
+  in place - `tick()` rebuilds inside its own try/catch) turns that from permanent into a few
+  minutes of downtime. Deliberately not done on the first failure: a rebuild forces a fresh
+  authentication and Dexcom rate-limits those. The same threshold also sets a device warning, since
+  until then an unreachable-Dexcom device looked identical to a healthy one for the whole
+  `noDataTimeoutMin` window (20 min by default). Both regression-tested in
+  `test/dexcom-poller.test.ts`.
+- **`tick()` reaching `scheduleNextTick()` is now structural, not inferred** - which is why no
+  external watchdog supervises this loop. Auditing that invariant after the two fixes above found
+  two more ways to break it, both closed at the source: (1) `refreshConfig()` was awaited
+  unbounded, and being inside the `try` only helps for a promise that *settles* - `client.ts`'s
+  dynamic ESM import is the one await here that could hang rather than reject - so every await in
+  `tick()` now goes through `withTimeout()`; and (2) `applyNoDataAlarm()`/`onSnapshotUpdated()`
+  ran *after* the try/catch, so a synchronous throw from either skipped the rearm, the same shape
+  as the client-build bug below. They now run in a `finally`, inside their own try, with
+  `scheduleNextTick()` after it - so the only path that leaves this device without a timer is
+  `stop()`. A watchdog was considered instead and rejected: it would have to out-wait the 15-minute
+  `AccountError` backoff to avoid restarting healthy pollers, which makes it both slower than these
+  fixes and a new source of duplicate timers.
+- **A failed dynamic import is no longer cached forever** (`client.ts`'s `loadDexcomModule`).
+  Caching the *pending* promise is deliberate (it dedupes concurrent loads across every device's
+  poller), but the rejected one was cached too, so a single transient import failure made every
+  later poll on every device re-await that same rejection until the app restarted - the same
+  "bad state outlives every retry" family as the two above, and the least recoverable of them,
+  since no amount of rebuilding the client gets past a module that will not load.
 - **`refreshConfig()` commits the credentials fingerprint only *after* the build resolves**, and
   drops the superseded client before attempting a new one. Recording it up front (as it once did)
   meant a failed build left the poller claiming to be current while still holding the *previous*
