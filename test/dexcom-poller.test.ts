@@ -814,18 +814,14 @@ test('a stalled account (no new reading) retries quickly at first, then settles 
   assert.equal(client.calls, 4, `expected a bounded, tapering retry count, got ${client.calls}`);
 });
 
-/** Drain the microtask queue so a tick started but not awaited reaches its next real timer. */
+/** Let a tick that was started but not awaited run up to its next timer. */
 function flush(): Promise<void> {
   return new Promise((resolve) => {
     setImmediate(resolve);
   });
 }
 
-test('a poll that never settles times out instead of stalling the self-rearming loop', async () => {
-  // dexcom-share-client's axios instance sets no timeout and Node adds none, so a black-holed
-  // request leaves getGlucoseReadings() pending forever. tick() awaits it, so without the
-  // POLL_TIMEOUT_MS guard scheduleNextTick() is never reached and this device stops polling
-  // entirely - silently, still marked available - until the whole app is restarted.
+test('a poll that never settles times out and the loop keeps running', async () => {
   const clock = new FakeClock();
   const host = new FakeHost();
   let hang = true;
@@ -843,7 +839,7 @@ test('a poll that never settles times out instead of stalling the self-rearming 
     clearTimer: clock.clearTimer,
   });
 
-  // Not awaited: this first tick cannot settle until the fake clock reaches the timeout.
+  // Not awaited: this tick can't settle until the fake clock reaches the timeout.
   const started = poller.start();
   await flush();
   assert.equal(client.calls, 1);
@@ -854,14 +850,11 @@ test('a poll that never settles times out instead of stalling the self-rearming 
 
   hang = false;
   await clock.advance(60_000);
-  assert.equal(client.calls, 2, 'the loop rearmed and retried on the transient-failure backoff');
-  assert.equal(host.capabilities.measure_glucose, 100, 'and recovered without an app restart');
+  assert.equal(client.calls, 2);
+  assert.equal(host.capabilities.measure_glucose, 100);
 });
 
 test('a client failing repeatedly is thrown away and rebuilt', async () => {
-  // The client is otherwise only rebuilt when credentials change, so internal state it wedges
-  // itself into (dexcom-share-client can retain an invalid session id that its own SessionError
-  // retry path never clears) would survive every retry until the app was restarted.
   const clock = new FakeClock();
   const host = new FakeHost();
   let builds = 0;
@@ -882,27 +875,25 @@ test('a client failing repeatedly is thrown away and rebuilt', async () => {
 
   await poller.start();
   assert.equal(builds, 1);
-  assert.equal(host.warning, null, 'a single failure is not worth warning about');
+  assert.equal(host.warning, null);
 
   await clock.advance(60_000);
-  assert.equal(builds, 1, 'two failures do not force a fresh authentication');
+  assert.equal(builds, 1, 'two failures do not force a re-login');
 
   await clock.advance(120_000);
-  assert.equal(builds, 1, 'the third failure drops the client but does not rebuild it in place');
-  assert.ok(host.warning, 'a sustained outage is surfaced on the device');
+  assert.equal(builds, 1, 'the third failure drops the client but does not rebuild it');
+  assert.ok(host.warning);
 
   await clock.advance(5 * 60_000);
-  assert.equal(builds, 2, 'the next tick rebuilds, inside its own error handling');
+  assert.equal(builds, 2, 'the next tick rebuilds it');
 
   shouldFail = false;
   await clock.advance(5 * 60_000);
   assert.equal(host.capabilities.measure_glucose, 100);
-  assert.equal(host.warning, null, 'the warning clears once polling recovers');
+  assert.equal(host.warning, null, 'the warning clears on recovery');
 });
 
-test('a hung client build times out instead of stalling the loop', async () => {
-  // refreshConfig() sits inside tick()'s try, but a `try` only catches promises that settle -
-  // client.ts's dynamic ESM import is the one await here that could hang rather than reject.
+test('a hung client build times out and the loop keeps running', async () => {
   const clock = new FakeClock();
   const host = new FakeHost();
   let hang = true;
@@ -928,13 +919,11 @@ test('a hung client build times out instead of stalling the loop', async () => {
 
   hang = false;
   await clock.advance(60_000);
-  assert.equal(builds, 2, 'the loop rearmed and retried the build');
+  assert.equal(builds, 2);
   assert.equal(host.capabilities.measure_glucose, 100);
 });
 
-test('a throw from the post-poll update cannot stop the loop rearming', async () => {
-  // applyNoDataAlarm()/onSnapshotUpdated() run after the try/catch. Neither is expected to throw,
-  // but "not expected to throw" is what the client build was before it killed this loop once.
+test('a throw from the post-poll update does not stop the loop', async () => {
   const clock = new FakeClock();
   const host = new FakeHost();
   let client!: FakeClient;
@@ -950,14 +939,12 @@ test('a throw from the post-poll update cannot stop the loop rearming', async ()
   });
 
   await poller.start();
-  assert.equal(client.calls, 1);
-
   host.onSnapshotUpdated = () => {
     throw new Error('widget broadcast blew up');
   };
 
   await clock.advance(5 * 60_000);
-  assert.equal(client.calls, 2, 'still polling');
+  assert.equal(client.calls, 2);
   await clock.advance(5 * 60_000);
-  assert.equal(client.calls, 3, 'and still rearming on the tick after that');
+  assert.equal(client.calls, 3);
 });

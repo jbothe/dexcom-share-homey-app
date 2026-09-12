@@ -23,13 +23,7 @@ function loadDexcomModule(): Promise<DexcomModule> {
     // require()'d from CJS.
     // eslint-disable-next-line node/no-unsupported-features/es-syntax
     modulePromise = import('dexcom-share-client');
-    // Caching the *pending* promise is the point (it dedupes concurrent loads across every
-    // device's poller), but caching a *rejected* one would make a single transient import failure
-    // permanent: every later poll on every device would re-await that same rejection until the app
-    // was restarted. That is the same "bad state outlives every retry" shape as the wedged Dexcom
-    // client in DexcomPoller, and it is un-retryable in a way that one is not, since no amount of
-    // rebuilding the client gets past a module that will not load. Clearing it lets the next
-    // attempt genuinely re-import.
+    // Don't cache a failed import, or one transient failure breaks every device until restart.
     modulePromise = modulePromise.catch((error) => {
       modulePromise = null;
       throw error;

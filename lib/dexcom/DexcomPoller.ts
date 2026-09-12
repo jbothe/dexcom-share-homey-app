@@ -52,38 +52,18 @@ const ACCOUNT_ERROR_BACKOFF_MS = 15 * 60_000;
 /** requestImmediateRefresh() no-ops if the last tick was more recent than this. */
 const MIN_REFRESH_GAP_MS = 60_000;
 /**
- * A poll that hasn't settled within this long is abandoned and treated as a transient failure.
- *
- * dexcom-share-client builds its axios instance with `axios.create({ headers })` and no `timeout`
- * (confirmed by reading the shipped source), and Node sets no default request timeout of its own,
- * so a request that black-holes - a NAT/connection-tracking entry dropped after a network blip is
- * the usual cause on a home LAN - leaves `getGlucoseReadings()` pending *forever*. Since tick()
- * awaits it, that also means scheduleNextTick() at the bottom of tick() is never reached: the
- * self-rearming loop stops dead with no timer left to recover it, no error logged, and the device
- * still marked available - exactly the "everything went stale until I restarted the app" failure
- * this constant exists to prevent. 60s is comfortably above a healthy round trip (auth + readings)
- * while still well inside the normal 5-minute cadence.
+ * Abandon any await in tick() after this long. dexcom-share-client's axios instance has no
+ * timeout, so a black-holed request would otherwise hang tick() forever and it would never
+ * reschedule itself.
  */
 const POLL_TIMEOUT_MS = 60_000;
 /**
- * Consecutive transient failures after which the Dexcom client is thrown away and rebuilt, rather
- * than retried forever as-is.
- *
- * The client is otherwise long-lived and only rebuilt when credentials change (refreshConfig), so
- * any *internal* state it wedges itself into survives every retry and is only cleared by an app
- * restart. dexcom-share-client has at least one such state: `_getSession()` assigns the session id
- * it got back *before* validating it, and if Dexcom returns the all-zero DEFAULT_UUID (its documented
- * answer in some account states) the validation throws an ArgumentError - leaving `_sessionId` set
- * to that invalid value. Every later getGlucoseReadings() then skips session creation (the id is
- * non-null), fails the same validation, and rethrows: its own catch only re-authenticates on
- * `SessionError`, and an ArgumentError isn't one. Dropping the client after a few failures turns
- * that from permanent into a few minutes of downtime. Not done on the first failure: rebuilding
- * forces a fresh authentication, and Dexcom rate-limits those ("Maximum authentication attempts
- * exceeded"), so an ordinary one-off network blip should not trigger one.
+ * After this many consecutive transient failures, drop the client (the next tick builds a fresh
+ * one) and show a warning. The library can wedge itself - it keeps an all-zero session id that
+ * fails validation on every call - and only a new client clears that. Not done on the first
+ * failure because a rebuild re-authenticates, and Dexcom rate-limits logins.
  */
-const REBUILD_CLIENT_AFTER_FAILURES = 3;
-/** Consecutive transient failures after which the device shows a "can't reach Dexcom" warning. */
-const WARN_AFTER_FAILURES = 3;
+const FAILURES_BEFORE_RESET = 3;
 /** Floor for the reading-anchored delay below - never poll more often than this. */
 const MIN_POLL_DELAY_MS = 30_000;
 /**
@@ -294,15 +274,8 @@ export class DexcomPoller {
   }
 
   /**
-   * Reject if `promise` hasn't settled within POLL_TIMEOUT_MS - see that constant for why the
-   * underlying request can otherwise hang forever, and why a hang is the one failure mode that
-   * kills the self-rearming loop outright rather than backing off. Applied to every await inside
-   * tick(), not just the network call: a `try` only catches promises that actually settle.
-   *
-   * The abandoned promise is deliberately left running (there's nothing to cancel: the library
-   * exposes no abort signal), with a rejection handler attached so a late failure can't surface
-   * as an unhandled rejection. A late *success* is simply discarded - by then this tick has
-   * already scheduled the next one, which will fetch the same data again.
+   * Reject if `promise` hasn't settled within POLL_TIMEOUT_MS. The library has no abort signal, so
+   * the abandoned promise keeps running and its late result is ignored.
    */
   private withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -332,9 +305,6 @@ export class DexcomPoller {
       // this device's self-rearming loop outright with no timer left to recover it. Treated as
       // just another tick failure instead, so it backs off and retries like any other.
       if (!this.client) {
-        // Timed out for the same reason the poll below is: being inside the try only helps if the
-        // promise actually settles. client.ts's dynamic ESM import is the one await here that
-        // could in principle hang rather than reject, and a hang never reaches the catch.
         await this.withTimeout(this.refreshConfig(), 'client build');
       }
       const readings = await this.withTimeout(
@@ -352,12 +322,7 @@ export class DexcomPoller {
     } catch (error) {
       nextDelay = this.handleError(error, trigger);
     } finally {
-      // The whole point of this loop is that it rearms, so rearming is the one thing that must not
-      // depend on anything above it succeeding. applyNoDataAlarm() and onSnapshotUpdated() are
-      // both thin adapters over Homey (capability writes, Flow triggers, the widget broadcast) and
-      // neither is expected to throw - but "not expected to throw" is exactly what the client
-      // build was before it killed this loop once already, so the guarantee is made structural
-      // here rather than inferred from what the callees currently happen to do.
+      // Always reschedule, even if the post-poll updates throw.
       try {
         this.applyNoDataAlarm();
         this.host.onSnapshotUpdated?.();
@@ -386,17 +351,10 @@ export class DexcomPoller {
     this.host.error(`[${trigger}] Dexcom poll failed`, error);
     const delay = TRANSIENT_BACKOFF_MS[Math.min(this.transientFailureCount, TRANSIENT_BACKOFF_MS.length - 1)];
     this.transientFailureCount += 1;
-    if (this.transientFailureCount >= REBUILD_CLIENT_AFTER_FAILURES) {
-      // Dropped, not rebuilt here: tick() rebuilds inside its own try/catch on the next run, so a
-      // failing clientFactory stays just another tick failure. See REBUILD_CLIENT_AFTER_FAILURES.
+    if (this.transientFailureCount >= FAILURES_BEFORE_RESET) {
+      // Only drop it; tick() rebuilds it inside its own try/catch.
       this.host.log(`[${trigger}] ${this.transientFailureCount} consecutive failures, rebuilding Dexcom client`);
       this.client = null;
-    }
-    if (this.transientFailureCount >= WARN_AFTER_FAILURES) {
-      // Until this, a device that simply can't reach Dexcom looked identical to a healthy one for
-      // the whole noDataTimeoutMin window (20 min by default) - the tile kept showing its last
-      // reading with no indication anything was wrong. Cleared by the next successful tick's own
-      // setWarning(null).
       this.host.setWarning('Cannot reach Dexcom Share right now - retrying');
     }
     return delay;
